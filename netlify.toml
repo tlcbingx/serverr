@@ -1,10 +1,10 @@
 [build]
   # Install using legacy peer deps to avoid ERESOLVE conflicts (dangerous-html requires react@17 peer)
-  command = "npm ci --legacy-peer-deps && npm run build"
+  command = "npm ci --legacy-peer-deps && npm run build && echo '--- repo root ---' && pwd && ls -la . && echo '--- out directory ---' && ls -la out || echo 'out missing or ls failed'"
   publish = "out"
 
 [build.environment]
   # Ensure Netlify uses Node 18 (matches .nvmrc / engines)
-  NODE_VERSION = "18"
+  NODE_VERSION = "20"
   # Also pass npm flags just in case
   NPM_FLAGS = "--legacy-peer-deps"
