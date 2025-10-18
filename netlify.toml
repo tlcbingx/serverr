@@ -1,7 +1,8 @@
 [build]
   # Install using legacy peer deps to avoid ERESOLVE conflicts
   # Run the build only; let Netlify Next plugin handle the publish step (supports i18n and modern Next features)
-  command = "npm ci --legacy-peer-deps && npm run build"
+  # Install, build, then print diagnostics so CI shows what was created
+  command = "npm ci --legacy-peer-deps && npm run build; echo '--- build exit code: $?'; echo '--- after build: repo root ---'; pwd; ls -la .; echo '--- ls .next ---'; if [ -d .next ]; then ls -la .next; else echo '.next missing'; fi; echo '--- ls .next/standalone ---'; if [ -d .next/standalone ]; then ls -la .next/standalone; else echo '.next/standalone missing'; fi; echo '--- ls .next/server ---'; if [ -d .next/server ]; then ls -la .next/server; else echo '.next/server missing'; fi; echo '--- ls .netlify ---'; if [ -d .netlify ]; then ls -la .netlify; else echo '.netlify missing'; fi"
   # Ensure publish is not the repo root. The Next plugin needs publish != base directory.
   publish = ".netlify"
 
