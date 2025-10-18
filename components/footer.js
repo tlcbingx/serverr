@@ -339,37 +339,7 @@ opacity: 0.6;}}
           </div>
         </footer>
       </div>
-      <style jsx>
-        {`
-          .footer-container1 {
-            display: contents;
-          }
-          .footer-container2 {
-            display: none;
-          }
-          .footer-container3 {
-            display: contents;
-          }
-          .footer-container4 {
-            display: none;
-          }
-          .footer-container5 {
-            display: contents;
-          }
-          .footer-container6 {
-            display: none;
-          }
-          .footer-container7 {
-            display: contents;
-          }
-          .footer-footer-disclaimer-icon {
-            color: var(--color-accent);
-            opacity: 0.7;
-            margin-top: 2px;
-            flex-shrink: 0;
-          }
-        `}
-      </style>
+      {/* styles moved to pages/style.css (global) */}
     </>
   )
 }

@@ -1,6 +1,6 @@
 import React from 'react'
 import Head from 'next/head'
-import Script from 'dangerous-html/react'
+import Script from 'next/script'
 import Navigation from '../components/navigation'
 import Footer from '../components/footer'
 
@@ -15,34 +15,6 @@ const Home = (props) => {
         <Navigation></Navigation>
         <div className="home-container2">
           <div className="home-container3">
-            <Script
-              html={`<style>
-        @keyframes gridFloat {0% {transform: translateY(0) translateX(0);}
-100% {transform: translateY(-10px) translateX(-5px);}}@keyframes fadeInUp {from {opacity: 0;
-transform: translateY(20px);}
-to {opacity: 1;
-transform: translateY(0);}}@keyframes pulseGlow {0%,100% {box-shadow: 0 0 20px
-        color-mix(in srgb, var(--color-accent) 15%, transparent);}
-50% {box-shadow: 0 0 30px
-        color-mix(in srgb, var(--color-accent) 25%, transparent);}}@keyframes fadeInFloat {from {opacity: 0;
-transform: translateY(12px);}
-to {opacity: 1;
-transform: translateY(0);}}@keyframes ctaPulse {0% {box-shadow: var(--shadow-level-2),
-        0 0 25px color-mix(in srgb, var(--color-accent) 18%, transparent);}
-100% {box-shadow: var(--shadow-level-3),
-        0 0 40px color-mix(in srgb, var(--color-accent) 30%, transparent);}}@keyframes subtlePulse {0% {box-shadow: --shadow-level-2;
-opacity: 1;}
-100% {box-shadow: var(--shadow-level-3),
-        0 0 20px color-mix(in srgb, var(--color-accent) 15%, transparent);
-opacity: 0.95;}}@keyframes glowPulse {0% {opacity: 0.5;
-transform: scale(1);}
-100% {opacity: 0.8;
-transform: scale(1.1);}}@keyframes fadeInSlide {from {opacity: 0;
-transform: translateY(-8px);}
-to {opacity: 1;
-transform: translateY(0);}}
-        </style> `}
-            ></Script>
           </div>
         </div>
         <div id="paymentModal" className="nav-modal" role="dialog" aria-modal="true" style={{display:'none'}}>
@@ -61,93 +33,26 @@ transform: translateY(0);}}
         </div>
         <div className="home-container4">
           <div className="home-container5">
-            <Script
-              html={`<style>
-@media (prefers-reduced-motion: reduce) {
-*, *::before, *::after {
-  animation-duration: 0.01ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.01ms !important;
-}
-.hero__grid-overlay {
-  animation: none;
-}
-.btn-primary, .performance__cta, .community__cta, .faq__support-link, .cta-card__glow {
-  animation: none;
-}
-}
-</style>`}
-            ></Script>
           </div>
         </div>
         <div className="home-container6">
           <div className="home-container7">
-            <Script
-              html={`<script defer data-name="vextr-homepage">
-(function(){
-  const observerOptions = {
-    root: null,
-    rootMargin: "0px",
-    threshold: 0.1,
-  }
-  const animateOnScroll = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.style.opacity = "1"
-        entry.target.style.transform = "translateY(0)"
-      }
-    })
-  }, observerOptions)
-  const animatedSections = document.querySelectorAll(
-    ".how-card, .performance-card, .testimonial-card, .pricing-card"
-  )
-  animatedSections.forEach((section) => {
-    animateOnScroll.observe(section)
-  })
+            <Script id="vextr-homepage" strategy="afterInteractive">
+{`(function(){
+  const observerOptions = { root: null, rootMargin: "0px", threshold: 0.1 }
+  const animateOnScroll = new IntersectionObserver((entries) => { entries.forEach((entry) => { if (entry.isIntersecting) { entry.target.style.opacity = "1"; entry.target.style.transform = "translateY(0)" } }) }, observerOptions)
+  const animatedSections = document.querySelectorAll(".how-card, .performance-card, .testimonial-card, .pricing-card")
+  animatedSections.forEach((section) => { animateOnScroll.observe(section) })
   const heroVideo = document.getElementById("hero-video")
-  if (heroVideo) {
-    heroVideo.addEventListener("loadeddata", () => {
-      heroVideo.style.opacity = "0.3"
-    })
-  }
-  const ctaButtons = document.querySelectorAll(
-    ".btn-primary, .performance__cta"
-  )
-  ctaButtons.forEach((button) => {
-    button.addEventListener("mouseenter", () => {
-      button.style.transform = "translateY(-2px) scale(1.02)"
-    })
-    button.addEventListener("mouseleave", () => {
-      button.style.transform = ""
-    })
-  })
+  if (heroVideo) { heroVideo.addEventListener("loadeddata", () => { heroVideo.style.opacity = "0.3" }) }
+  const ctaButtons = document.querySelectorAll(".btn-primary, .performance__cta")
+  ctaButtons.forEach((button) => { button.addEventListener("mouseenter", () => { button.style.transform = "translateY(-2px) scale(1.02)" }); button.addEventListener("mouseleave", () => { button.style.transform = "" }) })
   const internalLinks = document.querySelectorAll('a[href^="#"]')
-  internalLinks.forEach((link) => {
-    link.addEventListener("click", (e) => {
-      const href = link.getAttribute("href")
-      if (href !== "#" && href !== "") {
-        const target = document.querySelector(href)
-        if (target) {
-          e.preventDefault()
-          target.scrollIntoView({ behavior: "smooth", block: "start" })
-        }
-      }
-    })
-  })
+  internalLinks.forEach((link) => { link.addEventListener("click", (e) => { const href = link.getAttribute("href"); if (href !== "#" && href !== "") { const target = document.querySelector(href); if (target) { e.preventDefault(); target.scrollIntoView({ behavior: "smooth", block: "start" }) } } }) })
   const faqSupportLink = document.getElementById('faqSupportLink')
-  if (faqSupportLink) {
-    faqSupportLink.addEventListener('click', (e) => {
-      e.preventDefault()
-      const modal = document.getElementById('contactModal')
-      if (modal) {
-        modal.classList.add('nav-modal--open')
-        modal.style.display = 'block'
-      }
-    })
-  }
-})()
-</script>`}
-            ></Script>
+  if (faqSupportLink) { faqSupportLink.addEventListener('click', (e) => { e.preventDefault(); const modal = document.getElementById('contactModal'); if (modal) { modal.classList.add('nav-modal--open'); modal.style.display = 'block' } }) }
+})()`}
+            </Script>
           </div>
         </div>
         <main id="vextr-homepage">
@@ -171,48 +76,14 @@ transform: translateY(0);}}
                   Алгоритм вместо эмоций. Прибыль вместо стресса.
                 </h1>
                 <p className="hero-subtitle">
-                  <span>
-                    {' '}
-                    VEXTR — алгоритмический бот, работающий 24/7, чтобы
-                    безопасно и 
-                  </span>
-                  <span>
-                    профессионально увеличивать вашу прибыль
-                    <span
-                      dangerouslySetInnerHTML={{
-                        __html: ' ',
-                      }}
-                    />
-                  </span>
+                  Подключите биржу и начните автоматическую торговлю за несколько минут.
                 </p>
-                <div className="hero__cta-group">
-                  <a
-                    aria-label="Начать использовать VEXTR сейчас"
-                    className="btn-primary btn-lg btn"
-                    href="https://t.me/vextr_bot"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {' '}
+                <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+                  <a className="btn-primary btn" href="https://t.me/vextr_bot" target="_blank" rel="noopener noreferrer" style={{ textAlign: 'center' }}>
                     Начать сейчас
-                    <span
-                      dangerouslySetInnerHTML={{
-                        __html: ' ',
-                      }}
-                    />
                   </a>
-                  <a
-                    aria-label="Посмотреть статистику торговли"
-                    className="btn-lg btn btn-outline"
-                    href="/details"
-                  >
-                    {' '}
+                  <a aria-label="Посмотреть статистику торговли" className="btn-lg btn btn-outline" href="/details">
                     Посмотреть статистику
-                    <span
-                      dangerouslySetInnerHTML={{
-                        __html: ' ',
-                      }}
-                    />
                   </a>
                 </div>
               </div>

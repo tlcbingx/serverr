@@ -399,6 +399,14 @@
   grid-template-columns: 1fr 1fr;
 }
 
+/* appended navigation global styles (moved out of component to avoid nested styled-jsx) */
+@keyframes navigationGlow {0%,100% {box-shadow: 0 0 15px color-mix(in srgb, var(--color-accent) 20%, transparent);} 50% {box-shadow: 0 0 25px color-mix(in srgb, var(--color-accent) 40%, transparent);}}
+@media (prefers-reduced-motion: reduce) {
+.navigation, .navigation__link, .navigation__mobile-link, .navigation__toggle-icon, .navigation__mobile-menu {
+  transition: none;
+}
+}
+
 /* FAQ support CTA (appended) */
 .faq-support-note {
   margin-top: 1rem;
@@ -3093,4 +3101,84 @@
   .cta-card__actions {
     flex-direction: column;
   }
+}
+
+/* ---- CSS migrated from components/navigation.js ---- */
+.navigation-container1 { display: contents; }
+.navigation-container2 { display: none; }
+.navigation-container3 { display: contents; }
+.navigation-container4 { display: none; }
+.navigation-container5 { display: contents; }
+.navigation-container6 { display: none; }
+.navigation-container7 { display: contents; }
+.navigation-navigationlogo-text { text-transform: uppercase; }
+.navigation-navigationtoggle-icon1 { display: flex; opacity: 1; position: absolute; transform: rotate(0deg) scale(1); transition: all 0.3s var(--animation-curve-primary); align-items: center; justify-content: center; }
+.navigation-navigationtoggle-icon2 { display: flex; opacity: 0; position: absolute; transform: rotate(90deg) scale(0.5); transition: all 0.3s var(--animation-curve-primary); align-items: center; justify-content: center; }
+.nav-modal { position: fixed; inset: 0; z-index: 2000; }
+.nav-modal__backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.nav-modal__content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: calc(min(92vw, 440px)); border: 1px solid var(--glass-border); background: var(--glass-bg); -webkit-box-shadow: var(--shadow-level-3); box-shadow: var(--shadow-level-3); border-radius: var(--border-radius-lg); padding: var(--spacing-2xl); max-width: 92vw; box-sizing: border-box; }
+
+/* ---- CSS migrated from components/footer.js ---- */
+.footer-container1 { display: contents; }
+.footer-container2 { display: none; }
+.footer-container3 { display: contents; }
+.footer-container4 { display: none; }
+.footer-container5 { display: contents; }
+.footer-container6 { display: none; }
+.footer-container7 { display: contents; }
+.footer-footer-disclaimer-icon { color: var(--color-accent); opacity: 0.7; margin-top: 2px; flex-shrink: 0; }
+
+/* ---- CSS migrated from pages/index.js (home styles) ---- */
+.home-container1 { width: 100%; display: block; min-height: 100vh; }
+.home-container2 { display: none; }
+.home-container3 { display: contents; }
+.home-container4 { display: none; }
+.home-container5 { display: contents; }
+.home-container6 { display: none; }
+.home-container7 { display: contents; }
+
+/* ---- CSS migrated from pages/security.js (responsive helpers) ---- */
+@media (max-width: 768px) {
+  .security-hero__container,
+  .security-trust__container,
+  .security-features__container,
+  .security-philosophy__container { padding: 0 1rem !important; }
+  .security-hero, .security-trust, .security-features, .security-philosophy { padding: 2rem 0 !important; }
+  .security-features__grid { grid-template-columns: 1fr !important; gap: 1.5rem !important; }
+  .glass-main { padding: 1.5rem !important; }
+  .section-title { font-size: 1.8rem !important; }
+}
+
+/* ---- CSS migrated from pages/about.js (responsive helpers) ---- */
+@media (max-width: 768px) {
+  .about-hero__container,
+  .about-story__container,
+  .about-difference__container,
+  .about-philosophy__container,
+  .about-team__container,
+  .about-future__container { padding: 0 1rem !important; }
+  .about-hero, .about-story, .about-difference, .about-philosophy, .about-team, .about-future { padding: 2rem 0 !important; }
+  .about-difference__grid { grid-template-columns: 1fr !important; gap: 1.5rem !important; }
+  .about-story__content { gap: 1.5rem !important; }
+}
+
+/* ---- CSS migrated from pages/404.js (not found page styles) ---- */
+.not-found-container1 { width: 100%; display: flex; overflow: auto; min-height: 100vh; align-items: center; flex-direction: column; justify-content: center; }
+.not-found-container2 { display: flex; position: relative; align-items: center; flex-direction: column; justify-content: center; }
+.not-found-text2 { color: rgb(38, 38, 38); font-size: 252px; margin-top: -20px; font-weight: 900; margin-bottom: -20px; letter-spacing: -20px; }
+.not-found-container3 { width: 421px; display: flex; align-items: center; flex-direction: column; justify-content: center; }
+.not-found-text3 { text-align: center; font-weight: 400; }
+
+/* End migrated blocks */
+
+/* appended index keyframes and reduced-motion rules */
+@keyframes gridFloat {0% {transform: translateY(0) translateX(0);} 100% {transform: translateY(-10px) translateX(-5px);}}
+@keyframes fadeInUp {from {opacity: 0; transform: translateY(20px);} to {opacity: 1; transform: translateY(0);} }
+@keyframes pulseGlow {0%,100% {box-shadow: 0 0 20px color-mix(in srgb, var(--color-accent) 15%, transparent);} 50% {box-shadow: 0 0 30px color-mix(in srgb, var(--color-accent) 25%, transparent);} }
+@keyframes fadeInFloat {from {opacity: 0; transform: translateY(12px);} to {opacity: 1; transform: translateY(0);} }
+@keyframes ctaPulse {0% {box-shadow: var(--shadow-level-2), 0 0 25px color-mix(in srgb, var(--color-accent) 18%, transparent);} 100% {box-shadow: var(--shadow-level-3), 0 0 40px color-mix(in srgb, var(--color-accent) 30%, transparent);} }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .hero__grid-overlay { animation: none; }
+  .btn-primary, .performance__cta, .community__cta, .faq__support-link, .cta-card__glow { animation: none; }
 }

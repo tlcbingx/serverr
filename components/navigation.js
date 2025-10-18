@@ -1,6 +1,6 @@
 import React from 'react'
 
-import Script from 'dangerous-html/react'
+import Script from 'next/script'
 import { useTranslations } from 'next-intl'
 
 const Navigation = (props) => {
@@ -9,34 +9,16 @@ const Navigation = (props) => {
       <div className="navigation-container1">
         <div className="navigation-container2">
           <div className="navigation-container3">
-            <Script
-              html={`<style>
-        @keyframes navigationGlow {0%,100% {box-shadow: 0 0 15px
-        color-mix(in srgb, var(--color-accent) 20%, transparent);}
-50% {box-shadow: 0 0 25px
-        color-mix(in srgb, var(--color-accent) 40%, transparent);}}
-        </style> `}
-            ></Script>
           </div>
         </div>
         <div className="navigation-container4">
           <div className="navigation-container5">
-            <Script
-              html={`<style>
-@media (prefers-reduced-motion: reduce) {
-.navigation, .navigation__link, .navigation__mobile-link, .navigation__toggle-icon, .navigation__mobile-menu {
-  transition: none;
-}
-}
-</style>`}
-            ></Script>
           </div>
         </div>
         <div className="navigation-container6">
           <div className="navigation-container7">
-            <Script
-              html={`<script defer data-name="navigation">
-(function(){
+            <Script id="navigation-script" strategy="afterInteractive">
+{`(function(){
   const navigation = document.getElementById("navigation")
   const navigationToggle = document.getElementById("navigationToggle")
   const navigationMobileMenu = document.getElementById("navigationMobileMenu")
@@ -108,9 +90,8 @@ const Navigation = (props) => {
       }
     })
   })
-})()
-</script>`}
-            ></Script>
+})()`}
+            </Script>
           </div>
         </div>
         <nav id="navigation" className="navigation">
@@ -243,80 +224,7 @@ const Navigation = (props) => {
 
         
       </div>
-      <style jsx>
-        {`
-          .navigation-container1 {
-            display: contents;
-          }
-          .navigation-container2 {
-            display: none;
-          }
-          .navigation-container3 {
-            display: contents;
-          }
-          .navigation-container4 {
-            display: none;
-          }
-          .navigation-container5 {
-            display: contents;
-          }
-          .navigation-container6 {
-            display: none;
-          }
-          .navigation-container7 {
-            display: contents;
-          }
-          .navigation-navigationlogo-text {
-            text-transform: uppercase;
-          }
-          .navigation-navigationtoggle-icon1 {
-            display: flex;
-            opacity: 1;
-            position: absolute;
-            transform: rotate(0deg) scale(1);
-            transition: all 0.3s var(--animation-curve-primary);
-            align-items: center;
-            justify-content: center;
-          }
-          .navigation-navigationtoggle-icon2 {
-            display: flex;
-            opacity: 0;
-            position: absolute;
-            transform: rotate(90deg) scale(0.5);
-            transition: all 0.3s var(--animation-curve-primary);
-            align-items: center;
-            justify-content: center;
-          }
-
-          :global(.nav-modal) {
-            position: fixed;
-            inset: 0;
-            z-index: 2000;
-          }
-          :global(.nav-modal__backdrop) {
-            position: absolute;
-            inset: 0;
-            background: rgba(0,0,0,0.5);
-            -webkit-backdrop-filter: blur(4px);
-            backdrop-filter: blur(4px);
-          }
-          :global(.nav-modal__content) {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: calc(min(92vw, 440px));
-            border: 1px solid var(--glass-border);
-            background: var(--glass-bg);
-            -webkit-box-shadow: var(--shadow-level-3);
-            box-shadow: var(--shadow-level-3);
-            border-radius: var(--border-radius-lg);
-            padding: var(--spacing-2xl);
-            max-width: 92vw;
-            box-sizing: border-box;
-          }
-        `}
-      </style>
+      {/* styles moved to pages/style.css (global) */}
     </>
   )
 }
