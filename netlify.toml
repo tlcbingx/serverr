@@ -1,11 +1,12 @@
 [build]
-  # Install using legacy peer deps to avoid ERESOLVE conflicts (dangerous-html requires react@17 peer)
-  # Use the existing `build` script (next build && next export) to avoid missing-script errors on CI.
-  command = "npm ci --legacy-peer-deps && echo 'node:' && node -v && echo 'npm:' && npm -v && npm run build && npx next export -o out; echo 'build+export exit code: $?'; echo '--- repo root ---' && pwd && ls -la . && echo '--- out directory ---' && ls -la out || echo 'out missing or ls failed'"
-  publish = "out"
+  # Install using legacy peer deps to avoid ERESOLVE conflicts
+  # Run the build only; let Netlify Next plugin handle the publish step (supports i18n and modern Next features)
+  command = "npm ci --legacy-peer-deps && echo 'node:' && node -v && echo 'npm:' && npm -v && npm run build; echo 'build exit code: $?'; echo '--- repo root ---' && pwd && ls -la ."
 
 [build.environment]
-  # Request Node 20 on Netlify
   NODE_VERSION = "20.14.0"
-  # Also pass npm flags just in case
   NPM_FLAGS = "--legacy-peer-deps"
+
+[plugins]
+  [[plugins]]
+  package = "@netlify/plugin-nextjs"
