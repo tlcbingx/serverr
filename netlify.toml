@@ -1,6 +1,6 @@
 [build]
   # Install using legacy peer deps to avoid ERESOLVE conflicts (dangerous-html requires react@17 peer)
-  command = "npm ci --legacy-peer-deps && npm run build && echo '--- repo root ---' && pwd && ls -la . && echo '--- out directory ---' && ls -la out || echo 'out missing or ls failed'"
+  command = "npm ci --legacy-peer-deps && echo 'node:' && node -v && echo 'npm:' && npm -v && npm run build-only; echo 'build-only exit code: $?'; npm run export-only; echo 'export-only exit code: $?'; echo '--- repo root ---' && pwd && ls -la . && echo '--- out directory ---' && ls -la out || echo 'out missing or ls failed'"
   publish = "out"
 
 [build.environment]
