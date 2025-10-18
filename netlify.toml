@@ -6,6 +6,6 @@
 
 [build.environment]
   # Request Node 20 on Netlify
-  NODE_VERSION = "20"
+  NODE_VERSION = "20.14.0"
   # Also pass npm flags just in case
   NPM_FLAGS = "--legacy-peer-deps"
