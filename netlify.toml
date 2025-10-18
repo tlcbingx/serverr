@@ -3,7 +3,7 @@
   # Run the build only; let Netlify Next plugin handle the publish step (supports i18n and modern Next features)
   # Install and build. Then copy Next output into .netlify/next so the Netlify Next plugin
   # can always find the expected artifacts, and print diagnostics for debugging.
-  command = "npm ci --legacy-peer-deps && npm run build; echo '--- build exit code: $?'; echo '--- after build: repo root ---'; pwd; ls -la .; echo '--- ls .next ---'; if [ -d .next ]; then ls -la .next; else echo '.next missing'; fi; echo '--- ensuring .netlify/next ---'; mkdir -p .netlify && cp -a .next .netlify/next || true; echo '--- ls .netlify ---'; if [ -d .netlify ]; then ls -la .netlify; else echo '.netlify missing'; fi"
+  command = "npm ci --legacy-peer-deps && npm run build && cp -a .next .netlify/next || xcopy /E /I /Y .next .netlify\\next"
   # Ensure publish is not the repo root. The Next plugin needs publish != base directory.
   publish = ".netlify"
 
