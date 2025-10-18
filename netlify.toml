@@ -2,6 +2,8 @@
   # Install using legacy peer deps to avoid ERESOLVE conflicts
   # Run the build only; let Netlify Next plugin handle the publish step (supports i18n and modern Next features)
   command = "npm ci --legacy-peer-deps && echo 'node:' && node -v && echo 'npm:' && npm -v && npm run build; echo 'build exit code: $?'; echo '--- repo root ---' && pwd && ls -la ."
+  # Set a non-root publish dir so plugin isn't asked to publish the repository root
+  publish = ".netlify"
 
 [build.environment]
   NODE_VERSION = "20.14.0"
