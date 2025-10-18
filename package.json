@@ -14,10 +14,10 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
     "dangerous-html": "0.1.13",
-    "next": "^12.1.10",
+    "next": "^13.5.11",
     "next-intl": "2.10.0",
-    "react": "^17.0.2",
-    "react-dom": "^17.0.2"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "engines": {
     "node": ">=18.x"
