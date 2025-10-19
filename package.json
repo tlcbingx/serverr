@@ -3,15 +3,16 @@
   "version": "1.0.0",
   "description": "A next project generated based on a UIDL document",
   "main": "index.js",
-"scripts": {
-  "dev": "next dev",
-  "build": "next build",
-  "start": "next start"
-},
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
   "author": "TeleportHQ",
   "license": "MIT",
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
+    "@vercel/analytics": "^1.5.0",
     "dangerous-html": "0.1.13",
     "next": "^12.1.10",
     "next-intl": "2.10.0",
