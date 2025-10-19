@@ -9,8 +9,11 @@ const Home = (props) => {
     <>
       <div className="home-container1">
         <Head>
-          <title>Improbable Impassioned Parrot</title>
-          <meta property="og:title" content="Improbable Impassioned Parrot" />
+          <title>VEXTR — умный Telegram-бот для управления стратегией</title>
+          <meta property="og:title" content="VEXTR — современный Telegram-бот, который помогает управлять стратегией, задачами и аналитикой прямо в чате." />
+                <meta
+          name="keywords"
+          content="VEXTR, Telegram бот, умный бот, стратегия, управление, AI, Telegram assistant"/>
         </Head>
         <Navigation></Navigation>
         <div className="home-container2">
