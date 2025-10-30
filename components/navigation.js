@@ -1,9 +1,39 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 
 import Script from 'next/script'
 import { useTranslations } from 'next-intl'
 
 const Navigation = (props) => {
+  const [isApprovedPartner, setIsApprovedPartner] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    // Проверяем статус партнёра
+    const checkPartnerStatus = async () => {
+      const savedUser = localStorage.getItem('telegram_user')
+      
+      if (savedUser) {
+        try {
+          const user = JSON.parse(savedUser)
+          
+          const response = await fetch(`/api/partner/stats?telegram_id=${user.id}`)
+          
+          const data = await response.json()
+          
+          if (data.stats && data.stats.status === 'approved') {
+            setIsApprovedPartner(true)
+          }
+        } catch (error) {
+          console.error('Ошибка проверки статуса:', error)
+        }
+      }
+      
+      setIsLoading(false)
+    }
+
+    checkPartnerStatus()
+  }, [])
+
   return (
     <>
       <div className="navigation-container1">
@@ -129,13 +159,26 @@ const Navigation = (props) => {
                   <span>Безопасность</span>
                 </div>
               </a>
+              <a href="/affiliate">
+                <div className="navigation__link">
+                  <span>Партнерская программа</span>
+                </div>
+              </a>
             </div>
             
             <div className="navigation__actions">
-              {/* Primary header CTA - starts the bot (same as other CTAs) */}
-              <a href="https://t.me/vextr_bot" target="_blank" rel="noopener noreferrer" className="navigation__cta-link">
-                <div className="btn-primary btn navigation__cta">Начать сейчас</div>
-              </a>
+              {/* Primary header CTA - shows "Personal Cabinet" for approved partners or "Start Now" for others */}
+              {!isLoading && (
+                isApprovedPartner ? (
+                  <a href="/partner-dashboard" className="navigation__cta-link">
+                    <div className="btn-primary btn navigation__cta">Личный кабинет</div>
+                  </a>
+                ) : (
+                  <a href="https://t.me/vextr_bot" target="_blank" rel="noopener noreferrer" className="navigation__cta-link">
+                    <div className="btn-primary btn navigation__cta">Начать сейчас</div>
+                  </a>
+                )
+              )}
             </div>
             <button
               id="navigationToggle"
@@ -212,11 +255,26 @@ const Navigation = (props) => {
                   <span className="navigation__mobile-link-text">Безопасность</span>
                 </div>
               </a>
-              <a href="https://t.me/vextr_bot" target="_blank" rel="noopener noreferrer">
+              <a href="/affiliate">
                 <div className="navigation__mobile-link">
-                  <span className="navigation__mobile-link-text">Начать сейчас</span>
+                  <span className="navigation__mobile-link-text">Партнерская программа</span>
                 </div>
               </a>
+              {!isLoading && (
+                isApprovedPartner ? (
+                  <a href="/partner-dashboard">
+                    <div className="navigation__mobile-link">
+                      <span className="navigation__mobile-link-text">Личный кабинет</span>
+                    </div>
+                  </a>
+                ) : (
+                  <a href="https://t.me/vextr_bot" target="_blank" rel="noopener noreferrer">
+                    <div className="navigation__mobile-link">
+                      <span className="navigation__mobile-link-text">Начать сейчас</span>
+                    </div>
+                  </a>
+                )
+              )}
               
             </div>
           </div>

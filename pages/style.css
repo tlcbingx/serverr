@@ -3873,3 +3873,386 @@
   .hero__grid-overlay { animation: none; }
   .btn-primary, .performance__cta, .community__cta, .faq__support-link, .cta-card__glow { animation: none; }
 }
+
+/* Affiliate Program Styles */
+.affiliate-hero {
+  position: relative;
+  overflow: hidden;
+}
+
+.affiliate-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 30% 20%, rgba(155, 255, 0, 0.1) 0%, transparent 50%),
+              radial-gradient(circle at 70% 80%, rgba(0, 209, 255, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.benefit-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px rgba(155, 255, 0, 0.2);
+}
+
+.calculator-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+}
+
+.step-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 30px rgba(255, 255, 255, 0.1);
+}
+
+.calculator-grid {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.benefits-grid {
+  animation: fadeInUp 0.8s ease-out;
+}
+
+.how-steps {
+  animation: fadeInUp 1s ease-out;
+}
+
+/* Interactive Graph Styles */
+.interactive-graph-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.interactive-graph-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(155, 255, 0, 0.05) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+#earnings-graph {
+  transition: all 0.3s ease;
+}
+
+#earnings-graph:hover {
+  transform: scale(1.02);
+}
+
+#interactive-point {
+  transition: all 0.2s ease;
+  filter: drop-shadow(0 0 10px rgba(155, 255, 0, 0.8));
+}
+
+#vertical-line {
+  transition: all 0.2s ease;
+  filter: drop-shadow(0 0 5px rgba(155, 255, 0, 0.5));
+}
+
+#graph-tooltip {
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+}
+
+#main-curve {
+  filter: drop-shadow(0 0 10px rgba(155, 255, 0, 0.3));
+  transition: all 0.3s ease;
+}
+
+#main-curve:hover {
+  filter: drop-shadow(0 0 15px rgba(155, 255, 0, 0.5));
+}
+
+#area-path {
+  transition: all 0.3s ease;
+}
+
+/* Responsive adjustments for affiliate page */
+@media (max-width: 768px) {
+  .affiliate-hero h1 {
+    font-size: 2.5rem !important;
+  }
+  
+  .affiliate-hero .section-subtitle {
+    font-size: 1.2rem !important;
+  }
+  
+  .calculator-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+  }
+  
+  .benefits-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .how-steps {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .affiliate-cta .glass-main {
+    padding: 2rem 1rem !important;
+  }
+  
+  .affiliate-cta h2 {
+    font-size: 2rem !important;
+  }
+  
+  .interactive-graph-container {
+    padding: 2rem 1rem !important;
+  }
+  
+  #earnings-graph {
+    height: 300px !important;
+  }
+  
+  #graph-tooltip {
+    min-width: 150px !important;
+    font-size: 0.9rem !important;
+  }
+}
+
+/* Float Animation for Join Section */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+/* Premium Hero Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawLine {
+  to {
+    strokeDashoffset: 0;
+  }
+}
+
+/* Premium CTA Button Hover Effect */
+.cta-button-premium:hover {
+  transform: scale(1.05) translateY(-2px);
+  box-shadow: 0 0 60px rgba(159, 255, 0, 0.6), 0 15px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+.cta-button-premium:active {
+  transform: scale(0.98);
+}
+
+/* Graph Point Pulse */
+.graph-point {
+  transition: all 0.3s ease;
+}
+
+.graph-point:hover {
+  r: 12;
+  filter: drop-shadow(0 0 10px #9FFF00);
+}
+
+/* Premium Graph Points */
+.graph-point-premium {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.graph-point-premium:hover {
+  filter: drop-shadow(0 0 15px #9FFF00) !important;
+}
+
+/* Premium Tooltip */
+#premium-tooltip {
+  transition: all 0.2s ease;
+}
+
+/* Tooltip Arrow pointing UP to the point */
+#premium-tooltip::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 10px solid #9FFF00;
+}
+
+#premium-tooltip::after {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid rgba(0, 0, 0, 0.95);
+}
+
+/* Secondary Button Hover */
+.hero-content a:not(.cta-button-premium):hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  transform: translateY(-2px);
+}
+
+/* Premium Hero Responsive */
+@media (max-width: 1200px) {
+  .affiliate-hero-premium h1 {
+    font-size: 3rem !important;
+  }
+  
+  .affiliate-hero-premium > div > div > div {
+    grid-template-columns: 1fr !important;
+    gap: 4rem !important;
+  }
+  
+  .hero-content {
+    text-align: center;
+  }
+  
+  .hero-content p {
+    max-width: 100% !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .affiliate-hero-premium {
+    padding: 4rem 0 !important;
+  }
+  
+  .affiliate-hero-premium h1 {
+    font-size: 2.5rem !important;
+  }
+  
+  .cta-button-premium {
+    padding: 1rem 2rem !important;
+    font-size: 1rem !important;
+  }
+}
+
+/* Join Section Hover Effects */
+.join-step a:hover {
+  background: #9bff00 !important;
+  color: #000 !important;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(155, 255, 0, 0.3);
+}
+
+.affiliate-join a[href="/docs"]:hover {
+  background: #9bff00 !important;
+  color: #000 !important;
+  border-color: #9bff00 !important;
+  transform: translateY(-3px);
+  box-shadow: 0 10px 30px rgba(155, 255, 0, 0.4);
+}
+
+/* Responsive adjustments for Join Section */
+@media (max-width: 968px) {
+  .affiliate-join__container > div {
+    grid-template-columns: 1fr !important;
+    gap: 3rem !important;
+  }
+  
+  .join-step h3 {
+    font-size: 1.5rem !important;
+  }
+  
+  .join-step p {
+    font-size: 1rem !important;
+  }
+}
+
+/* Стили для калькулятора заработка */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-track {
+  background: rgba(255, 255, 255, 0.1);
+  height: 8px;
+  border-radius: 4px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #9FFF00;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  margin-top: -6px;
+  box-shadow: 0 0 20px rgba(159, 255, 0, 0.6);
+  transition: all 0.2s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: #7ed900;
+  box-shadow: 0 0 30px rgba(159, 255, 0, 0.8);
+  transform: scale(1.1);
+}
+
+input[type="range"]::-moz-range-track {
+  background: rgba(255, 255, 255, 0.1);
+  height: 8px;
+  border-radius: 4px;
+  border: none;
+}
+
+input[type="range"]::-moz-range-thumb {
+  background: #9FFF00;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 20px rgba(159, 255, 0, 0.6);
+  transition: all 0.2s ease;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  background: #7ed900;
+  box-shadow: 0 0 30px rgba(159, 255, 0, 0.8);
+  transform: scale(1.1);
+}

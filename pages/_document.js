@@ -2,14 +2,45 @@ import Document, { Html, Head, Main, NextScript } from 'next/document'
 class CustomDocument extends Document {
   render() {
     return (
-      <Html>
+      <Html lang="ru">
         <Head>
+          <meta charSet="utf-8"></meta>
           <meta
             name="viewport"
             content="width=device-width, initial-scale=1.0"
           ></meta>
-          <meta charSet="utf-8"></meta>
+          
+          {/* Favicon и иконки */}
+          <link rel="icon" type="image/svg+xml" href="/icon0.svg"></link>
+          <link rel="icon" type="image/x-icon" href="/favicon.ico"></link>
+          <link rel="icon" type="image/png" sizes="32x32" href="/icon1.png"></link>
+          <link rel="apple-touch-icon" sizes="180x180" href="/apple-icon.png"></link>
+          
+          {/* SEO Meta теги */}
+          <meta name="description" content="VEXTR - умный Telegram-бот для управления торговой стратегией. Автоматическое управление ордерами и рисками 24/7."></meta>
+          <meta name="keywords" content="VEXTR, торговый бот, Telegram бот, криптотрейдинг, автоматическая торговля"></meta>
+          <meta name="author" content="VEXTR"></meta>
+          
+          {/* Open Graph для соцсетей */}
+          <meta property="og:type" content="website"></meta>
+          <meta property="og:site_name" content="VEXTR"></meta>
+          <meta property="og:title" content="VEXTR - умный Telegram-бот для управления стратегией"></meta>
+          <meta property="og:description" content="Запустите VEXTR одним нажатием - бот начнёт торговлю 24/7, автоматически управляя ордерами и рисками."></meta>
+          <meta property="og:image" content="/og-image.png"></meta>
+          <meta property="og:url" content="https://vextr.ru"></meta>
+          
+          {/* Twitter Card */}
           <meta property="twitter:card" content="summary_large_image"></meta>
+          <meta property="twitter:title" content="VEXTR - умный Telegram-бот"></meta>
+          <meta property="twitter:description" content="Автоматическое управление торговлей 24/7"></meta>
+          <meta property="twitter:image" content="/og-image.png"></meta>
+          
+          {/* Дополнительные meta */}
+          <meta name="theme-color" content="#000000"></meta>
+          <meta name="msapplication-TileColor" content="#000000"></meta>
+          
+          {/* Google Site Verification */}
+          <meta name="google-site-verification" content="kojHgnw8G_etQz4aYIUI2Oj2leSTADKf5ejzGhyLbrU" />
           <style
             dangerouslySetInnerHTML={{
               __html:
@@ -52,6 +83,27 @@ class CustomDocument extends Document {
             rel="stylesheet"
             href="https://unpkg.com/@teleporthq/teleport-custom-scripts/dist/style.css"
           ></link>
+          {/* Yandex.Metrika counter */}
+          <script
+            type="text/javascript"
+            dangerouslySetInnerHTML={{
+              __html: `
+                (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+                m[i].l=1*new Date();
+                for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+                k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+                (window, document, "script", "https://mc.yandex.ru/metrika/tag.js?id=104979507", "ym");
+
+                ym(104979507, "init", {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+              `
+            }}
+          />
+          <noscript>
+            <div>
+              <img src="https://mc.yandex.ru/watch/104979507" style={{position: 'absolute', left: '-9999px'}} alt="" />
+            </div>
+          </noscript>
+          {/* /Yandex.Metrika counter */}
         </Head>
         <body>
           <Main></Main>

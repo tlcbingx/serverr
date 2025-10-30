@@ -10,10 +10,52 @@ const Home = (props) => {
       <div className="home-container1">
         <Head>
           <title>VEXTR — умный Telegram-бот для управления стратегией</title>
-          <meta property="og:title" content="VEXTR — современный Telegram-бот, который помогает управлять стратегией, задачами и аналитикой прямо в чате." />
-                <meta
-          name="keywords"
-          content="VEXTR, Telegram бот, умный бот, стратегия, управление, AI, Telegram assistant"/>
+          <meta name="description" content="VEXTR - умный Telegram-бот для управления торговой стратегией. Автоматическое управление ордерами и рисками 24/7. Подключи API от биржи и зарабатывай." />
+          <meta name="keywords" content="VEXTR, торговый бот, Telegram бот, криптотрейдинг, автоматическая торговля, торговля криптовалютой, бот для биржи, автоматизация торговли" />
+          
+          {/* Open Graph */}
+          <meta property="og:title" content="VEXTR — умный Telegram-бот для автоматической торговли" />
+          <meta property="og:description" content="Автоматическое управление торговлей криптовалютой 24/7. Подключи API и начни зарабатывать." />
+          <meta property="og:url" content="https://vextr.ru" />
+          <meta property="og:image" content="https://vextr.ru/og-image.png" />
+          
+          {/* Twitter Card */}
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content="VEXTR — умный торговый бот для криптобиржи" />
+          <meta name="twitter:description" content="Автоматическая торговля 24/7. Умное управление рисками. Подключи API и начни." />
+          <meta name="twitter:image" content="https://vextr.ru/og-image.png" />
+          
+          {/* Structured Data (JSON-LD) */}
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "SoftwareApplication",
+                "name": "VEXTR",
+                "applicationCategory": "FinanceApplication",
+                "description": "Умный Telegram-бот для автоматической торговли криптовалютами. Управление ордерами и рисками 24/7.",
+                "url": "https://vextr.ru",
+                "operatingSystem": "Telegram",
+                "offers": {
+                  "@type": "Offer",
+                  "price": "0",
+                  "priceCurrency": "RUB"
+                },
+                "creator": {
+                  "@type": "Organization",
+                  "name": "VEXTR",
+                  "url": "https://vextr.ru"
+                },
+                "contactPoint": {
+                  "@type": "ContactPoint",
+                  "contactType": "customer support",
+                  "email": "vextrbot@gmail.com",
+                  "availableLanguage": ["Russian"]
+                }
+              })
+            }}
+          />
         </Head>
         <Navigation></Navigation>
         <div className="home-container2">
@@ -893,71 +935,6 @@ const Home = (props) => {
                     }}
                   />
                 </span>
-              </div>
-            </div>
-          </section>
-          <section id="cta" aria-labelledby="cta-title" className="cta-section">
-            <div className="cta-section__container">
-              <div className="cta-card">
-                <div className="cta-card__content">
-                  <h2 id="cta-title" className="cta-card__title">
-                    Начать сейчас
-                  </h2>
-                  <p className="cta-card__text">
-                    {' '}
-                    VEXTR автоматически торгует 24/7 — подключись и доверь
-                    сделки профессиональному боту. Без ручного трейдинга, с
-                    продвинутым управлением рисками и прозрачной аналитикой.
-                    <span
-                      dangerouslySetInnerHTML={{
-                        __html: ' ',
-                      }}
-                    />
-                  </p>
-                  <p className="cta-card__subtext">
-                    {' '}
-                    Быстрая активация — подключи биржу, выбери стратегию и
-                    запусти. Всё под твоим контролем, всё на автопилоте.
-                    <span
-                      dangerouslySetInnerHTML={{
-                        __html: ' ',
-                      }}
-                    />
-                  </p>
-                  <div className="cta-card__actions">
-                    <a
-                      aria-label="Начать торговлю с VEXTR прямо сейчас"
-                      className="btn-primary btn-xl btn"
-                      href="https://t.me/vextr_bot"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {' '}
-                      Начать сейчас
-                      <span
-                        dangerouslySetInnerHTML={{
-                          __html: ' ',
-                        }}
-                      />
-                    </a>
-                    <a
-                      aria-label="Попробовать демо-версию VEXTR"
-                      className="btn-xl btn btn-outline"
-                      href="/demo"
-                    >
-                      {' '}
-                      Попробовать демо
-                      <span
-                        dangerouslySetInnerHTML={{
-                          __html: ' ',
-                        }}
-                      />
-                    </a>
-                  </div>
-                </div>
-                <div aria-hidden="true" className="cta-card__backdrop">
-                  <div className="cta-card__glow"></div>
-                </div>
               </div>
             </div>
           </section>

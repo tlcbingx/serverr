@@ -1,6 +1,5 @@
 
 import { createContext, useMemo, useContext, useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { useLocale } from "next-intl";
 
 const GlobalContext = createContext(null)
@@ -9,12 +8,6 @@ export const GlobalProvider = ({ initialLocales, children }) => {
   const localeValue = useLocale()
   const [locales, setLocales] = useState(initialLocales ?? [{"name":"English","short":"en"}])
   const [locale, setLocale] = useState({"name":"English","short":"en"})
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  const supabase = useMemo(() => {
-    if (!supabaseUrl || !supabaseAnonKey) return null
-    return createClient(supabaseUrl, supabaseAnonKey)
-  }, [supabaseUrl, supabaseAnonKey])
   
   useEffect(() => {
     if (!locales) {
@@ -30,10 +23,9 @@ export const GlobalProvider = ({ initialLocales, children }) => {
       locales,
       locale,
       setLocales,
-      setLocale,
-      supabase
+      setLocale
     }
-  }, [locales, locale, supabase])
+  }, [locales, locale])
 
   return (
     <GlobalContext.Provider value={value}>

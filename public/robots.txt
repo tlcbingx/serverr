@@ -1,0 +1,38 @@
+# robots.txt для VEXTR
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /partner-dashboard
+Disallow: /affiliate-application
+Disallow: /login
+Disallow: /register
+
+# Основной сайт и документы - разрешаем всё
+Allow: /
+Allow: /affiliate
+Allow: /about
+Allow: /contacts
+Allow: /demo
+Allow: /docs
+Allow: /faq
+Allow: /security
+Allow: /terms
+Allow: /privacy
+Allow: /affiliate-terms
+
+# Sitemap
+Sitemap: https://vextr.ru/sitemap.xml
+
+# Yandex
+User-agent: Yandex
+Allow: /
+Disallow: /api/
+Disallow: /partner-dashboard
+
+# Google
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+Disallow: /partner-dashboard
+
