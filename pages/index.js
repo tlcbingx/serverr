@@ -105,11 +105,12 @@ const Home = (props) => {
             <div aria-hidden="true" className="hero__bg">
               <video
                 id="hero-video"
-                src="https://videos.pexels.com/video-files/3141211/3141211-hd_1920_1080_25fps.mp4"
-                loop="true"
-                muted="true"
-                autoPlay="true"
-                playsInline="true"
+                src="/home.mp4"
+                loop
+                muted
+                autoPlay
+                playsInline
+                preload="auto"
                 className="hero__bg-video"
               ></video>
               <div className="hero__bg-scrim"></div>
