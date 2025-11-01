@@ -77,6 +77,47 @@ export default async function handler(req, res) {
 
     console.log('✅ Payment recorded:', payment.id)
 
+    // Отправляем уведомление партнёру, если есть referrer и комиссия
+    if (payment.referrer_telegram_id && payment.commission_amount) {
+      try {
+        const BOT_TOKEN = process.env.BOT_TOKEN
+        
+        if (BOT_TOKEN) {
+          const partnerMessage = `
+🎉 <b>Новая покупка по вашему промокоду!</b>
+
+💰 <b>Сумма платежа:</b>
+<code>${parseFloat(payment.amount).toLocaleString('ru-RU')} ${payment.currency || 'RUB'}</code>
+
+💵 <b>Ваша комиссия:</b>
+<code>${parseFloat(payment.commission_amount || 0).toLocaleString('ru-RU')} ${payment.currency || 'RUB'}</code>
+${payment.is_first_payment ? '(100% от суммы)' : `(${payment.commission_rate || 0}% от суммы)`}
+
+${payment.promo_code ? `🎁 Промокод: <code>${payment.promo_code}</code>` : ''}
+📅 ${new Date(payment.paid_at || new Date()).toLocaleString('ru-RU')}
+          `.trim()
+
+          await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: payment.referrer_telegram_id,
+              text: partnerMessage,
+              parse_mode: 'HTML',
+              disable_web_page_preview: true
+            })
+          })
+
+          console.log('✅ Notification sent to partner:', payment.referrer_telegram_id)
+        } else {
+          console.warn('⚠️ BOT_TOKEN not configured - skipping partner notification')
+        }
+      } catch (notificationError) {
+        console.error('❌ Error sending partner notification:', notificationError)
+        // Не блокируем ответ при ошибке уведомления
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Payment recorded successfully',
