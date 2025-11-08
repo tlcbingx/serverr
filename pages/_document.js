@@ -10,30 +10,35 @@ class CustomDocument extends Document {
             content="width=device-width, initial-scale=1.0"
           ></meta>
           
-          {/* Favicon и иконки */}
-          <link rel="icon" type="image/svg+xml" href="/icon0.svg"></link>
-          <link rel="icon" type="image/x-icon" href="/favicon.ico"></link>
-          <link rel="icon" type="image/png" sizes="32x32" href="/icon1.png"></link>
-          <link rel="apple-touch-icon" sizes="180x180" href="/apple-icon.png"></link>
+          {/* Favicon и иконки для Яндекс и других поисковиков */}
+          <link rel="icon" href="https://vextr.ru/favicon.ico" type="image/x-icon"></link>
+          <link rel="shortcut icon" href="https://vextr.ru/favicon.ico" type="image/x-icon"></link>
+          <link rel="icon" type="image/svg+xml" href="https://vextr.ru/icon0.svg"></link>
+          <link rel="icon" type="image/png" sizes="32x32" href="https://vextr.ru/icon1.png"></link>
+          <link rel="apple-touch-icon" sizes="180x180" href="https://vextr.ru/apple-icon.png"></link>
           
           {/* SEO Meta теги */}
-          <meta name="description" content="VEXTR - умный Telegram-бот для управления торговой стратегией. Автоматическое управление ордерами и рисками 24/7."></meta>
-          <meta name="keywords" content="VEXTR, торговый бот, Telegram бот, криптотрейдинг, автоматическая торговля"></meta>
+          <meta name="description" content="Торговый бот VEXTR для алго трейдинга. Алгоритмический трейдинг с автоматическим управлением ордерами и рисками 24/7. Бот для OKX, Bybit, BingX."></meta>
+          <meta name="keywords" content="торговый бот, алго трейдинг, алгоритмический трейдинг, торговый бот для криптовалют, бот для трейдинга, автоматический трейдинг, алгоритмическая торговля, торговый бот криптовалюты, автоматизация торговли, VEXTR, Telegram бот, криптотрейдинг"></meta>
           <meta name="author" content="VEXTR"></meta>
+          <meta name="robots" content="index, follow"></meta>
+          <meta name="googlebot" content="index, follow"></meta>
+          <meta name="yandex" content="index, follow"></meta>
           
           {/* Open Graph для соцсетей */}
           <meta property="og:type" content="website"></meta>
-          <meta property="og:site_name" content="VEXTR"></meta>
-          <meta property="og:title" content="VEXTR - умный Telegram-бот для управления стратегией"></meta>
-          <meta property="og:description" content="Запустите VEXTR одним нажатием - бот начнёт торговлю 24/7, автоматически управляя ордерами и рисками."></meta>
-          <meta property="og:image" content="/og-image.png"></meta>
+          <meta property="og:site_name" content="VEXTR - Торговый бот для алго трейдинга"></meta>
+          <meta property="og:title" content="Торговый бот для алго трейдинга | VEXTR"></meta>
+          <meta property="og:description" content="Торговый бот VEXTR для алгоритмического трейдинга. Запустите торговый бот одним нажатием - алго трейдинг начнётся 24/7, автоматически управляя ордерами и рисками."></meta>
+          <meta property="og:image" content="https://vextr.ru/og-image.png"></meta>
           <meta property="og:url" content="https://vextr.ru"></meta>
+          <meta property="og:logo" content="https://vextr.ru/apple-icon.png"></meta>
           
           {/* Twitter Card */}
           <meta property="twitter:card" content="summary_large_image"></meta>
-          <meta property="twitter:title" content="VEXTR - умный Telegram-бот"></meta>
-          <meta property="twitter:description" content="Автоматическое управление торговлей 24/7"></meta>
-          <meta property="twitter:image" content="/og-image.png"></meta>
+          <meta property="twitter:title" content="Торговый бот для алго трейдинга | VEXTR"></meta>
+          <meta property="twitter:description" content="Алгоритмический трейдинг с автоматической торговлей 24/7. Торговый бот для криптовалют."></meta>
+          <meta property="twitter:image" content="https://vextr.ru/og-image.png"></meta>
           
           {/* Дополнительные meta */}
           <meta name="theme-color" content="#000000"></meta>

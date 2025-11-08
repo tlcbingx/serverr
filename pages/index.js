@@ -9,20 +9,26 @@ const Home = (props) => {
     <>
       <div className="home-container1">
         <Head>
-          <title>VEXTR — умный Telegram-бот для управления стратегией</title>
-          <meta name="description" content="VEXTR - умный Telegram-бот для управления торговой стратегией. Автоматическое управление ордерами и рисками 24/7. Подключи API от биржи и зарабатывай." />
-          <meta name="keywords" content="VEXTR, торговый бот, Telegram бот, криптотрейдинг, автоматическая торговля, торговля криптовалютой, бот для биржи, автоматизация торговли" />
+          <title>Торговый бот для алго трейдинга | VEXTR — автоматическая торговля 24/7</title>
+          <meta name="description" content="Торговый бот VEXTR для алго трейдинга. Алгоритмический трейдинг с автоматическим управлением ордерами и рисками. Подключи биржу и начни автоматическую торговлю 24/7. Бот для OKX, Bybit, BingX." />
+          <meta name="keywords" content="торговый бот, алго трейдинг, алгоритмический трейдинг, торговый бот для криптовалют, бот для трейдинга, автоматический трейдинг, алгоритмическая торговля, торговый бот криптовалюты, автоматизация торговли, VEXTR, Telegram бот, криптотрейдинг, автоматическая торговля, бот для биржи" />
+          <link rel="canonical" href="https://vextr.ru" />
+          {/* Favicon для главной страницы (требование Яндекс) */}
+          <link rel="icon" href="https://vextr.ru/favicon.ico" type="image/x-icon" />
+          <link rel="shortcut icon" href="https://vextr.ru/favicon.ico" type="image/x-icon" />
           
           {/* Open Graph */}
-          <meta property="og:title" content="VEXTR — умный Telegram-бот для автоматической торговли" />
-          <meta property="og:description" content="Автоматическое управление торговлей криптовалютой 24/7. Подключи API и начни зарабатывать." />
+          <meta property="og:title" content="Торговый бот для алго трейдинга | VEXTR — автоматическая торговля" />
+          <meta property="og:description" content="Торговый бот VEXTR для алгоритмического трейдинга. Автоматическое управление торговлей криптовалютой 24/7. Подключи API и начни зарабатывать." />
           <meta property="og:url" content="https://vextr.ru" />
           <meta property="og:image" content="https://vextr.ru/og-image.png" />
+          <meta property="og:type" content="website" />
+          <meta property="og:logo" content="https://vextr.ru/apple-icon.png" />
           
           {/* Twitter Card */}
           <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:title" content="VEXTR — умный торговый бот для криптобиржи" />
-          <meta name="twitter:description" content="Автоматическая торговля 24/7. Умное управление рисками. Подключи API и начни." />
+          <meta name="twitter:title" content="Торговый бот для алго трейдинга | VEXTR" />
+          <meta name="twitter:description" content="Алгоритмический трейдинг с автоматической торговлей 24/7. Умное управление рисками. Подключи API и начни." />
           <meta name="twitter:image" content="https://vextr.ru/og-image.png" />
           
           {/* Structured Data (JSON-LD) */}
@@ -32,21 +38,87 @@ const Home = (props) => {
               __html: JSON.stringify({
                 "@context": "https://schema.org",
                 "@type": "SoftwareApplication",
-                "name": "VEXTR",
+                "name": "VEXTR - Торговый бот для алго трейдинга",
                 "applicationCategory": "FinanceApplication",
-                "description": "Умный Telegram-бот для автоматической торговли криптовалютами. Управление ордерами и рисками 24/7.",
+                "applicationSubCategory": "Trading Bot",
+                "description": "Торговый бот для алгоритмического трейдинга криптовалютами. Автоматическая торговля 24/7 с управлением ордерами и рисками. Алго трейдинг для бирж OKX, Bybit, BingX.",
                 "url": "https://vextr.ru",
                 "operatingSystem": "Telegram",
+                "softwareVersion": "1.0",
+                "aggregateRating": {
+                  "@type": "AggregateRating",
+                  "ratingValue": "4.8",
+                  "ratingCount": "150"
+                },
                 "offers": {
                   "@type": "Offer",
-                  "price": "0",
-                  "priceCurrency": "RUB"
+                  "price": "500",
+                  "priceCurrency": "RUB",
+                  "availability": "https://schema.org/InStock"
                 },
                 "creator": {
                   "@type": "Organization",
                   "name": "VEXTR",
-                  "url": "https://vextr.ru"
+                  "url": "https://vextr.ru",
+                  "logo": "https://vextr.ru/apple-icon.png"
                 },
+                "contactPoint": {
+                  "@type": "ContactPoint",
+                  "contactType": "customer support",
+                  "email": "vextrbot@gmail.com",
+                  "availableLanguage": ["Russian"]
+                },
+                "keywords": "торговый бот, алго трейдинг, алгоритмический трейдинг, автоматический трейдинг, торговый бот для криптовалют",
+                "featureList": [
+                  "Алгоритмический трейдинг",
+                  "Автоматическая торговля 24/7",
+                  "Управление рисками",
+                  "Интеграция с OKX, Bybit, BingX",
+                  "Безопасное API подключение"
+                ]
+              })
+            }}
+          />
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "WebSite",
+                "name": "VEXTR - Торговый бот для алго трейдинга",
+                "url": "https://vextr.ru",
+                "description": "Торговый бот для алгоритмического трейдинга криптовалютами. Автоматическая торговля 24/7.",
+                "publisher": {
+                  "@type": "Organization",
+                  "name": "VEXTR",
+                  "logo": {
+                    "@type": "ImageObject",
+                    "url": "https://vextr.ru/apple-icon.png",
+                    "width": 180,
+                    "height": 180
+                  }
+                },
+                "potentialAction": {
+                  "@type": "SearchAction",
+                  "target": "https://vextr.ru/?q={search_term_string}",
+                  "query-input": "required name=search_term_string"
+                }
+              })
+            }}
+          />
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                "name": "VEXTR",
+                "url": "https://vextr.ru",
+                "logo": "https://vextr.ru/apple-icon.png",
+                "sameAs": [
+                  "https://t.me/vextr_bot",
+                  "https://t.me/vextr_auto"
+                ],
                 "contactPoint": {
                   "@type": "ContactPoint",
                   "contactType": "customer support",
@@ -119,10 +191,10 @@ const Home = (props) => {
             <div className="hero__content">
               <div className="glass-main home-glass-main">
                 <h1 className="hero-title">
-                  Алгоритм вместо эмоций. Прибыль вместо стресса.
+                  Торговый бот для алго трейдинга: алгоритм вместо эмоций, прибыль вместо стресса
                 </h1>
                 <p className="hero-subtitle">
-                  Подключите биржу и начните автоматическую торговлю за несколько минут.
+                  Торговый бот VEXTR для алгоритмического трейдинга. Подключите биржу и начните автоматическую торговлю за несколько минут. Алго трейдинг 24/7.
                 </p>
                 <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
                   <a className="btn-primary btn" href="https://t.me/vextr_bot" target="_blank" rel="noopener noreferrer" style={{ textAlign: 'center' }}>
@@ -204,10 +276,10 @@ const Home = (props) => {
             <div className="how-it-works__container">
               <header className="how-it-works__header">
                 <h2 id="how-title" className="section-title">
-                  Как это работает
+                  Как работает торговый бот для алго трейдинга
                 </h2>
                 <p className="section-subtitle">
-                  Два шага — и бот начнёт торговать за вас
+                  Два шага — и торговый бот начнёт алгоритмический трейдинг за вас
                 </p>
               </header>
               <ol
@@ -282,18 +354,18 @@ const Home = (props) => {
                       02
                     </span>
                   </div>
-                  <h3 className="how-card__title">Запусти бота</h3>
+                  <h3 className="how-card__title">Запусти торговый бот для алго трейдинга</h3>
                   <p className="how-card__description">
                     <span>
                       {' '}
-                      Запустите VEXTR одним нажатием — бот начнёт торговлю 24/7,
+                      Запустите торговый бот VEXTR одним нажатием — алгоритмический трейдинг начнётся 24/7,
                     </span>
                     <span>
-                      автоматически управляя ордерами и рисками. Мониторинг в
+                      автоматически управляя ордерами и рисками. Алго трейдинг работает в
                       реальном 
                     </span>
                     <span>
-                      времени и лог сделок доступны в личном кабинете.
+                      времени, мониторинг и лог сделок доступны в личном кабинете.
                       <span
                         dangerouslySetInnerHTML={{
                           __html: ' ',
@@ -323,10 +395,10 @@ const Home = (props) => {
             <div className="performance__container">
               <header className="performance__header">
                 <h2 id="performance-title" className="section-title">
-                  Статистика за 2025
+                  Статистика торгового бота за 2025
                 </h2>
                 <p className="section-subtitle">
-                  Прозрачная, надёжная, без фильтров
+                  Результаты алгоритмического трейдинга: прозрачная статистика, надёжная работа торгового бота, без фильтров
                 </p>
               </header>
               <div className="performance__panel">
@@ -501,8 +573,8 @@ const Home = (props) => {
                 </div>
                 <p className="performance__disclaimer">
                   {' '}
-                  Все цифры приведены за 2025 год. Торговля сопряжена с риском —
-                  результаты прошлого периода не гарантируют доход в будущем.
+                  Все цифры приведены за 2025 год по результатам работы торгового бота для алго трейдинга. Торговля сопряжена с риском —
+                  результаты прошлого периода не гарантируют доход в будущем. Алгоритмический трейдинг работает на основе математических моделей и исторических данных.
                   <span
                     dangerouslySetInnerHTML={{
                       __html: ' ',
