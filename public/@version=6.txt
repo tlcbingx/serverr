@@ -1,0 +1,484 @@
+//@version=6
+strategy("vextrauto", overlay=true, initial_capital=1000, default_qty_type=strategy.percent_of_equity, calc_on_every_tick = true, default_qty_value=20, commission_type=strategy.commission.percent, commission_value=0.1, process_orders_on_close=false)
+
+n_fast = input.int(15, title="Length of Fast EMA")
+n_slow = input.int(30, title="Length of Slow EMA")
+src_ema = input.source(close, title="Price Source for EMA")
+
+base_sl_percent = input.float(3, title="Base Stop Loss (%)", minval=0.1) / 100
+base_tp1_percent = input.float(3, title="Base Take Profit 1 (%)", minval=0.1) / 100
+base_tp2_percent = input.float(6, title="Base Take Profit 2 (%)", minval=0.1) / 100
+base_tp3_percent = input.float(10, title="Base Take Profit 3 (%)", minval=0.1) / 100
+
+is4h = timeframe.period == "240"
+is1h = timeframe.period == "60"
+
+atrPeriod = is4h ? 21 : is1h ? 14 : 14
+volatilityThresholdLow = is4h ? 0.3 : is1h ? 0.45 : 0.5
+volatilityThresholdHigh = is4h ? 1.2 : is1h ? 1.3 : 1.5
+
+atrMultiplierLow = is4h ? 0.7 : is1h ? 1.5 : 1.0    
+atrMultiplierNormal = 1.0 
+atrMultiplierHigh = is4h ? 1.5 : is1h ? 0.7 : 1.0   
+
+trendLength = input.int(200, title="Trend Filter EMA Length")
+trend_src   = input.source(hlc3, title="Price Source for Trend EMA")
+
+macdFastLen   = is1h ? 8 : is4h ? 12 : 12
+macdSlowLen   = is1h ? 21 : is4h ? 26 : 26
+macdSignalLen = is1h ? 5 : is4h ? 9 : 9
+
+rsiPeriod      = input.int(14, title="RSI Period")
+rsiLongFilter  = input.int(50, title="RSI Filter for Long (RSI > value)")
+rsiShortFilter = input.int(50, title="RSI Filter for Short (RSI < value)")
+
+vwapDaily = ta.vwap
+
+var trade_id = 0
+
+var bool short_reached_tp1 = false
+var bool short_reached_tp2 = false
+var bool short_tp2_executed = false
+var float short_current_stop = na
+var int short_stage = 0
+
+var bool long_reached_tp1 = false
+var bool long_reached_tp2 = false
+var bool long_tp2_executed = false
+var float long_current_stop = na
+var int long_stage = 0
+
+var float multiPV = na
+var float multiVol = na
+multiPV := is4h ? nz(multiPV[1], 0) + (hlc3 * volume) : 0
+multiVol := is4h ? nz(multiVol[1], 0) + volume : 0
+float multiVWAP = is4h ? (multiPV / multiVol) : na
+
+atrValue = ta.atr(atrPeriod)
+atrRelative = atrValue / close * 100
+
+volatilityLevel = 
+     atrRelative <= volatilityThresholdLow ? "low" : 
+     atrRelative >= volatilityThresholdHigh ? "high" : "normal"
+
+getMultiplier() =>
+    if volatilityLevel == "low"
+        atrMultiplierLow
+    else if volatilityLevel == "high"
+        atrMultiplierHigh
+    else
+        atrMultiplierNormal
+
+currentMultiplier = getMultiplier()
+
+stop_loss_percent = base_sl_percent * currentMultiplier
+take_profit_1_percent = base_tp1_percent * currentMultiplier * 1.2
+take_profit_2_percent = base_tp2_percent * currentMultiplier * 1.2
+take_profit_3_percent = base_tp3_percent * currentMultiplier * 1.2
+
+fast = ta.ema(src_ema, n_fast)
+slow = ta.ema(src_ema, n_slow)
+
+trendEMA = ta.ema(trend_src, trendLength)
+
+[macdLine, signalLine, macdHist] = ta.macd(close, macdFastLen, macdSlowLen, macdSignalLen)
+
+rsi = ta.rsi(close, rsiPeriod)
+
+price_change_limit = 2.0
+
+bars_back = is1h ? 2 : is4h ? 1 : 3
+
+
+price_change_over_time = (close / close[bars_back] - 1) * 100
+
+did_cross_up = ta.crossover(fast, slow)
+did_cross_dn = ta.crossunder(fast, slow)
+
+price_change_percent = math.abs(close / close[1] - 1) * 100
+
+longCondition = did_cross_up and 
+     (is1h ? (close > vwapDaily) : is4h ? (close > trendEMA) : true) and 
+     (macdHist > 0) and 
+     (rsi > rsiLongFilter) and
+     (not is1h or price_change_percent < 2) and
+     strategy.position_size <= 0
+     
+shortCondition = did_cross_dn and 
+     (is1h ? (close < vwapDaily) : is4h ? (close < trendEMA) : true) and 
+     (macdHist < 0) and 
+     (rsi < rsiShortFilter) and
+     (not is1h or price_change_over_time > -price_change_limit) and
+     strategy.position_size >= 0
+
+longStopPrice    = strategy.position_avg_price * (1 - stop_loss_percent)
+longTakeProfit1  = strategy.position_avg_price * (1 + take_profit_1_percent)
+longTakeProfit2  = strategy.position_avg_price * (1 + take_profit_2_percent)
+longTakeProfit3  = strategy.position_avg_price * (1 + take_profit_3_percent)
+
+shortStopPrice   = strategy.position_avg_price * (1 + stop_loss_percent)
+shortTakeProfit1 = strategy.position_avg_price * (1 - take_profit_1_percent)
+shortTakeProfit2 = strategy.position_avg_price * (1 - take_profit_2_percent)
+shortTakeProfit3 = strategy.position_avg_price * (1 - take_profit_3_percent)
+
+var line long_stop_line = na
+var line long_tp1_line  = na
+var line long_tp2_line  = na
+var line long_tp3_line  = na
+var line short_stop_line = na
+var line short_tp1_line  = na
+var line short_tp2_line  = na
+var line short_tp3_line  = na
+var line long_be_line = na
+var label long_be_label = na
+var line short_be_line = na
+var label short_be_label = na
+var label long_stop_label = na
+var label long_tp1_label  = na
+var label long_tp2_label  = na
+var label long_tp3_label  = na
+var label short_stop_label = na
+var label short_tp1_label  = na
+var label short_tp2_label  = na
+var label short_tp3_label  = na
+var label volatility_label = na
+
+if strategy.position_size == 0 or longCondition or shortCondition
+    trade_id := trade_id + 1
+    short_reached_tp1 := false
+    short_reached_tp2 := false
+    short_stage := 0
+    short_current_stop := na
+    long_reached_tp1 := false
+    long_reached_tp2 := false
+    long_stage := 0
+    long_current_stop := na
+
+    line.delete(long_stop_line)
+    line.delete(long_tp1_line)
+    line.delete(long_tp2_line)
+    line.delete(long_tp3_line)
+    line.delete(short_stop_line)
+    line.delete(short_tp1_line)
+    line.delete(short_tp2_line)
+    line.delete(short_tp3_line)
+    line.delete(long_be_line)
+    line.delete(short_be_line)
+    label.delete(long_stop_label)
+    label.delete(long_tp1_label)
+    label.delete(long_tp2_label)
+    label.delete(long_tp3_label)
+    label.delete(short_stop_label)
+    label.delete(short_tp1_label)
+    label.delete(short_tp2_label)
+    label.delete(short_tp3_label)
+    label.delete(long_be_label)
+    label.delete(short_be_label)
+    label.delete(volatility_label)
+
+// === JSON helpers ===
+// безопасное tostring для чисел, возвращает "null" если na
+numToJson(v) =>
+    na(v) ? "null" : str.tostring(v, format.mintick)
+
+// Унифицированная функция создания JSON
+createApiMessage(type, price, sl, tp1, tp2, tp3, qty_percent) =>
+    message = "{\n" +
+              "  \"action\": \"" + type + "\",\n" +
+              "  \"symbol\": \"" + syminfo.ticker + "\",\n" +
+              "  \"price\": " + numToJson(price) + ",\n" +
+              "  \"stop_loss\": " + numToJson(sl) + ",\n" +
+              "  \"take_profit_1\": " + numToJson(tp1) + ",\n" +
+              "  \"take_profit_2\": " + numToJson(tp2) + ",\n" +
+              "  \"take_profit_3\": " + numToJson(tp3) + ",\n" +
+              "  \"quantity_percent\": " + (na(qty_percent) ? "null" : str.tostring(qty_percent)) + ",\n" +
+              "  \"timeframe\": \"" + timeframe.period + "\",\n" +
+              "  \"timestamp\": " + str.tostring(time) + "\n" +
+              "}"
+    message
+
+//Обёртка для MOVE_SL — теперь типизированные na
+createMoveSLMessage(price, sl) =>
+    createApiMessage("MOVE_SL", price, sl, float(na), float(na), float(na), float(na))
+
+if barstate.isconfirmed
+    // удаляем старую метку волатильности
+    label.delete(volatility_label)
+    volatility_label := label.new(x=bar_index, y=na,
+         text="Volatility: " + volatilityLevel + "\nATR: " + str.tostring(atrValue, format.mintick) +
+         " (" + str.tostring(atrRelative, "#.##") + "%)\nMultiplier: " + str.tostring(currentMultiplier, "#.##") +
+         "\nAdjusted SL: " + str.tostring(stop_loss_percent*100, "#.##") + "%" +
+         "\nAdjusted TP1: " + str.tostring(take_profit_1_percent*100, "#.##") + "%",
+         style=label.style_label_left, color=color.blue, textcolor=color.white, size=size.small)
+
+    // === LONG ENTRY ===
+    if (longCondition and strategy.position_size <= 0)
+        strategy.entry("Long" + str.tostring(trade_id), strategy.long, comment="Long Entry")
+
+        entry_price = close
+        longStopPrice := entry_price * (1 - stop_loss_percent)
+        longTakeProfit1 := entry_price * (1 + take_profit_1_percent)
+        longTakeProfit2 := entry_price * (1 + take_profit_2_percent)
+        longTakeProfit3 := entry_price * (1 + take_profit_3_percent)
+
+        api_message = createApiMessage("BUY", entry_price, longStopPrice, longTakeProfit1, longTakeProfit2, longTakeProfit3, 100)
+        alert(api_message, alert.freq_once_per_bar_close)
+
+        strategy.exit("Long TP1 "+str.tostring(trade_id),
+                     from_entry="Long" + str.tostring(trade_id),
+                     stop=longStopPrice,
+                     limit=longTakeProfit1,
+                     qty_percent=25,
+                     comment="Long TP1 (25%)")
+
+        strategy.exit("Long TP2 "+str.tostring(trade_id),
+                     from_entry="Long" + str.tostring(trade_id),
+                     stop=longStopPrice,
+                     limit=longTakeProfit2,
+                     qty_percent=33,
+                     comment="Long TP2 (33%)")
+
+        strategy.exit("Long TP3 "+str.tostring(trade_id),
+                     from_entry="Long" + str.tostring(trade_id),
+                     stop=longStopPrice,
+                     limit=longTakeProfit3,
+                     comment="Long TP3 (42%)")
+
+        long_stop_line := line.new(x1=bar_index, y1=longStopPrice, x2=bar_index+50, y2=longStopPrice, color=color.red, width=2, style=line.style_dashed)
+        long_tp1_line := line.new(x1=bar_index, y1=longTakeProfit1, x2=bar_index+50, y2=longTakeProfit1, color=color.green, width=2, style=line.style_dashed)
+        long_tp2_line := line.new(x1=bar_index, y1=longTakeProfit2, x2=bar_index+50, y2=longTakeProfit2, color=color.green, width=2, style=line.style_dashed)
+        long_tp3_line := line.new(x1=bar_index, y1=longTakeProfit3, x2=bar_index+50, y2=longTakeProfit3, color=color.green, width=2, style=line.style_dashed)
+
+        long_stop_label := label.new(x=bar_index+50, y=longStopPrice, text="SL " + str.tostring(longStopPrice, format.mintick), style=label.style_label_left, color=color.red, textcolor=color.white, size=size.normal)
+        long_tp1_label := label.new(x=bar_index+50, y=longTakeProfit1, text="TP1 " + str.tostring(longTakeProfit1, format.mintick), style=label.style_label_left, color=color.green, textcolor=color.white, size=size.normal)
+        long_tp2_label := label.new(x=bar_index+50, y=longTakeProfit2, text="TP2 " + str.tostring(longTakeProfit2, format.mintick), style=label.style_label_left, color=color.green, textcolor=color.white, size=size.normal)
+        long_tp3_label := label.new(x=bar_index+50, y=longTakeProfit3, text="TP3 " + str.tostring(longTakeProfit3, format.mintick), style=label.style_label_left, color=color.green, textcolor=color.white, size=size.normal)
+
+    // === SHORT ENTRY ===
+    if (shortCondition and strategy.position_size >= 0)
+        strategy.entry("Short" + str.tostring(trade_id), strategy.short, comment="Short Entry")
+
+        entry_price = close
+        shortStopPrice := entry_price * (1 + stop_loss_percent)
+        shortTakeProfit1 := entry_price * (1 - take_profit_1_percent)
+        shortTakeProfit2 := entry_price * (1 - take_profit_2_percent)
+        shortTakeProfit3 := entry_price * (1 - take_profit_3_percent)
+
+        api_message = createApiMessage("SELL", entry_price, shortStopPrice, shortTakeProfit1, shortTakeProfit2, shortTakeProfit3, 100)
+        alert(api_message, alert.freq_once_per_bar_close)
+
+        strategy.exit("Short TP1 "+str.tostring(trade_id),
+                     from_entry="Short" + str.tostring(trade_id),
+                     stop=shortStopPrice,
+                     limit=shortTakeProfit1,
+                     qty_percent=25,
+                     comment="Short TP1 (25%)")
+
+        strategy.exit("Short TP2 "+str.tostring(trade_id),
+                     from_entry="Short" + str.tostring(trade_id),
+                     stop=shortStopPrice,
+                     limit=shortTakeProfit2,
+                     qty_percent=33,
+                     comment="Short TP2 (33%)")
+
+        strategy.exit("Short TP3 "+str.tostring(trade_id),
+                     from_entry="Short" + str.tostring(trade_id),
+                     stop=shortStopPrice,
+                     limit=shortTakeProfit3,
+                     comment="Short TP3 (42%)")
+
+        short_stop_line := line.new(x1=bar_index, y1=shortStopPrice, x2=bar_index+50, y2=shortStopPrice, color=color.red, width=2, style=line.style_dashed)
+        short_tp1_line := line.new(x1=bar_index, y1=shortTakeProfit1, x2=bar_index+50, y2=shortTakeProfit1, color=color.green, width=2, style=line.style_dashed)
+        short_tp2_line := line.new(x1=bar_index, y1=shortTakeProfit2, x2=bar_index+50, y2=shortTakeProfit2, color=color.green, width=2, style=line.style_dashed)
+        short_tp3_line := line.new(x1=bar_index, y1=shortTakeProfit3, x2=bar_index+50, y2=shortTakeProfit3, color=color.green, width=2, style=line.style_dashed)
+
+        short_stop_label := label.new(x=bar_index+50, y=shortStopPrice, text="SL " + str.tostring(shortStopPrice, format.mintick), style=label.style_label_left, color=color.red, textcolor=color.white, size=size.normal)
+        short_tp1_label := label.new(x=bar_index+50, y=shortTakeProfit1, text="TP1 " + str.tostring(shortTakeProfit1, format.mintick), style=label.style_label_left, color=color.green, textcolor=color.white, size=size.normal)
+        short_tp2_label := label.new(x=bar_index+50, y=shortTakeProfit2, text="TP2 " + str.tostring(shortTakeProfit2, format.mintick), style=label.style_label_left, color=color.green, textcolor=color.white, size=size.normal)
+        short_tp3_label := label.new(x=bar_index+50, y=shortTakeProfit3, text="TP3 " + str.tostring(shortTakeProfit3, format.mintick), style=label.style_label_left, color=color.green, textcolor=color.white, size=size.normal)
+
+    // === MOVE SL / TP transitions ===
+    if strategy.position_size > 0
+        if not long_reached_tp1 and high >= longTakeProfit1
+            long_reached_tp1 := true
+            long_stage := 1
+
+            line.delete(long_stop_line)
+            line.delete(long_tp1_line)
+            label.delete(long_stop_label)
+            label.delete(long_tp1_label)
+
+            strategy.exit("Long TP2 "+str.tostring(trade_id),
+                         from_entry="Long" + str.tostring(trade_id),
+                         stop=strategy.position_avg_price * (1 + 0.001),
+                         limit=longTakeProfit2,
+                         qty_percent=33,
+                         comment="Long TP2 (33%)")
+
+            // корректный MOVE_SL
+            api_message = createMoveSLMessage(strategy.position_avg_price, strategy.position_avg_price * (1 + 0.001))
+            alert(api_message, alert.freq_once_per_bar_close)
+
+            strategy.exit("Long TP3 "+str.tostring(trade_id),
+                         from_entry="Long" + str.tostring(trade_id),
+                         stop=strategy.position_avg_price * (1 + 0.001),
+                         limit=longTakeProfit3,
+                         comment="Long TP3 (42%)")
+
+        if long_reached_tp1 and not long_reached_tp2 and high >= longTakeProfit2
+            long_reached_tp2 := true
+            long_stage := 2
+
+            line.delete(long_tp2_line)
+            label.delete(long_tp2_label)
+
+            strategy.exit("Long TP3 "+str.tostring(trade_id),
+                         from_entry="Long" + str.tostring(trade_id),
+                         stop=longTakeProfit1 * (1 + 0.001),
+                         limit=longTakeProfit3,
+                         comment="Long TP3 (42%)")
+
+            api_message = createMoveSLMessage(strategy.position_avg_price, longTakeProfit1 * (1 + 0.001))
+            alert(api_message, alert.freq_once_per_bar_close)
+
+    if strategy.position_size < 0
+        if not short_reached_tp1 and low <= shortTakeProfit1
+            short_reached_tp1 := true
+            short_stage := 1
+
+            line.delete(short_stop_line)
+            line.delete(short_tp1_line)
+            label.delete(short_stop_label)
+            label.delete(short_tp1_label)
+
+            strategy.exit("Short TP2 "+str.tostring(trade_id),
+                         from_entry="Short" + str.tostring(trade_id),
+                         stop=strategy.position_avg_price * (1 - 0.001),
+                         limit=shortTakeProfit2,
+                         qty_percent=33,
+                         comment="Short TP2 (33%)")
+
+            api_message = createMoveSLMessage(strategy.position_avg_price, strategy.position_avg_price * (1 - 0.001))
+            alert(api_message, alert.freq_once_per_bar_close)
+
+            strategy.exit("Short TP3 "+str.tostring(trade_id),
+                         from_entry="Short" + str.tostring(trade_id),
+                         stop=strategy.position_avg_price * (1 - 0.001),
+                         limit=shortTakeProfit3,
+                         comment="Short TP3 (42%)")
+
+        if short_reached_tp1 and not short_reached_tp2 and low <= shortTakeProfit2
+            short_reached_tp2 := true
+            short_stage := 2
+
+            line.delete(short_tp2_line)
+            label.delete(short_tp2_label)
+
+            strategy.exit("Short TP3 "+str.tostring(trade_id),
+                         from_entry="Short" + str.tostring(trade_id),
+                         stop=shortTakeProfit1 * (1 - 0.001),
+                         limit=shortTakeProfit3,
+                         comment="Short TP3 (42%)")
+
+            api_message = createMoveSLMessage(strategy.position_avg_price, shortTakeProfit1 * (1 - 0.001))
+            alert(api_message, alert.freq_once_per_bar_close)
+
+if (strategy.position_size == 0 and (long_reached_tp1 or short_reached_tp1))
+    line.delete(long_stop_line)
+    line.delete(long_tp1_line)
+    line.delete(long_tp2_line)
+    line.delete(long_tp3_line)
+    line.delete(short_stop_line)
+    line.delete(short_tp1_line)
+    line.delete(short_tp2_line)
+    line.delete(short_tp3_line)
+    line.delete(long_be_line)
+    line.delete(short_be_line)
+    label.delete(long_stop_label)
+    label.delete(long_tp1_label)
+    label.delete(long_tp2_label)
+    label.delete(long_tp3_label)
+    label.delete(short_stop_label)
+    label.delete(short_tp1_label)
+    label.delete(short_tp2_label)
+    label.delete(short_tp3_label)
+    label.delete(long_be_label)
+    label.delete(short_be_label)
+
+if (strategy.position_size > 0)
+    if (long_stage >= 1) 
+        be_price = long_stage == 2 ? longTakeProfit1 * (1 + 0.001) : strategy.position_avg_price * (1 + 0.001)
+        if na(long_be_line)
+            long_be_line := line.new(x1=bar_index, y1=be_price, x2=bar_index+50, y2=be_price, color=color.black, width=2, style=line.style_dashed)
+            long_be_label := label.new(x=bar_index+50, y=be_price, text="BE " + str.tostring(be_price, format.mintick), style=label.style_label_left, color=color.black, textcolor=color.white, size=size.normal)
+        else
+            line.set_xy1(long_be_line, bar_index, be_price)
+            line.set_xy2(long_be_line, bar_index+50, be_price)
+            label.set_xy(long_be_label, bar_index+50, be_price)
+            label.set_text(long_be_label, "BE " + str.tostring(be_price, format.mintick))
+            
+    else if not na(long_stop_line)
+        line.set_xy1(long_stop_line, bar_index, longStopPrice)
+        line.set_xy2(long_stop_line, bar_index+50, longStopPrice)
+        label.set_xy(long_stop_label, bar_index+50, longStopPrice)
+        label.set_text(long_stop_label, "SL " + str.tostring(longStopPrice, format.mintick))
+    
+    if not na(long_tp1_line)
+        line.set_xy1(long_tp1_line, bar_index, longTakeProfit1)
+        line.set_xy2(long_tp1_line, bar_index+50, longTakeProfit1)
+        label.set_xy(long_tp1_label, bar_index+50, longTakeProfit1)
+        label.set_text(long_tp1_label, "TP1 " + str.tostring(longTakeProfit1, format.mintick))
+
+    if not na(long_tp2_line)
+        line.set_xy1(long_tp2_line, bar_index, longTakeProfit2)
+        line.set_xy2(long_tp2_line, bar_index+50, longTakeProfit2)
+        label.set_xy(long_tp2_label, bar_index+50, longTakeProfit2)
+        label.set_text(long_tp2_label, "TP2 " + str.tostring(longTakeProfit2, format.mintick))
+        
+    if not na(long_tp3_line)
+        line.set_xy1(long_tp3_line, bar_index, longTakeProfit3)
+        line.set_xy2(long_tp3_line, bar_index+50, longTakeProfit3)
+        label.set_xy(long_tp3_label, bar_index+50, longTakeProfit3)
+        label.set_text(long_tp3_label, "TP3 " + str.tostring(longTakeProfit3, format.mintick))
+
+if (strategy.position_size < 0)
+    if (short_stage >= 1) 
+        be_price = short_stage == 2 ? shortTakeProfit1 * (1 - 0.001) : strategy.position_avg_price * (1 - 0.001)
+        if na(short_be_line)
+            short_be_line := line.new(x1=bar_index, y1=be_price, x2=bar_index+50, y2=be_price, color=color.black, width=2, style=line.style_dashed)
+            short_be_label := label.new(x=bar_index+50, y=be_price, text="BE " + str.tostring(be_price, format.mintick), style=label.style_label_left, color=color.black, textcolor=color.white, size=size.normal)
+        else
+            line.set_xy1(short_be_line, bar_index, be_price)
+            line.set_xy2(short_be_line, bar_index+50, be_price)
+            label.set_xy(short_be_label, bar_index+50, be_price)
+            label.set_text(short_be_label, "BE " + str.tostring(be_price, format.mintick))
+
+    else if not na(short_stop_line)
+        line.set_xy1(short_stop_line, bar_index, shortStopPrice)
+        line.set_xy2(short_stop_line, bar_index+50, shortStopPrice)
+        label.set_xy(short_stop_label, bar_index+50, shortStopPrice)
+        label.set_text(short_stop_label, "SL " + str.tostring(shortStopPrice, format.mintick))
+    
+    if not na(short_tp1_line)
+        line.set_xy1(short_tp1_line, bar_index, shortTakeProfit1)
+        line.set_xy2(short_tp1_line, bar_index+50, shortTakeProfit1)
+        label.set_xy(short_tp1_label, bar_index+50, shortTakeProfit1)
+        label.set_text(short_tp1_label, "TP1 " + str.tostring(shortTakeProfit1, format.mintick))
+
+    if not na(short_tp2_line)
+        line.set_xy1(short_tp2_line, bar_index, shortTakeProfit2)
+        line.set_xy2(short_tp2_line, bar_index+50, shortTakeProfit2)
+        label.set_xy(short_tp2_label, bar_index+50, shortTakeProfit2)
+        label.set_text(short_tp2_label, "TP2 " + str.tostring(shortTakeProfit2, format.mintick))
+
+    if not na(short_tp3_line)
+        line.set_xy1(short_tp3_line, bar_index, shortTakeProfit3)
+        line.set_xy2(short_tp3_line, bar_index+50, shortTakeProfit3)
+        label.set_xy(short_tp3_label, bar_index+50, shortTakeProfit3)
+        label.set_text(short_tp3_label, "TP3 " + str.tostring(shortTakeProfit3, format.mintick))
+
+plot(fast, color=color.rgb(180, 243, 33), title="Fast EMA")
+plot(slow, color=color.rgb(30, 110, 230), title="Slow EMA")
+plot(trendEMA, color=color.rgb(243, 93, 33), title="Trend Filter EMA")
+
+plot(atrValue, title="ATR", color=color.purple, linewidth=1, style=plot.style_linebr)

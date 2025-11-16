@@ -174,7 +174,7 @@ const Navigation = (props) => {
                     <div className="btn-primary btn navigation__cta">Личный кабинет</div>
                   </a>
                 ) : (
-                  <a href="https://t.me/vextr_bot" target="_blank" rel="noopener noreferrer" className="navigation__cta-link">
+                  <a href="https://t.me/VextrAlgoBot" target="_blank" rel="noopener noreferrer" className="navigation__cta-link">
                     <div className="btn-primary btn navigation__cta">Начать сейчас</div>
                   </a>
                 )
@@ -268,7 +268,7 @@ const Navigation = (props) => {
                     </div>
                   </a>
                 ) : (
-                  <a href="https://t.me/vextr_bot" target="_blank" rel="noopener noreferrer">
+                  <a href="https://t.me/VextrAlgoBot" target="_blank" rel="noopener noreferrer">
                     <div className="navigation__mobile-link">
                       <span className="navigation__mobile-link-text">Начать сейчас</span>
                     </div>

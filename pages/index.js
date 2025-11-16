@@ -13,11 +13,9 @@ const Home = (props) => {
           <meta name="description" content="Торговый бот VEXTR для алго трейдинга. Алгоритмический трейдинг с автоматическим управлением ордерами и рисками. Подключи биржу и начни автоматическую торговлю 24/7. Бот для OKX, Bybit, BingX." />
           <meta name="keywords" content="торговый бот, алго трейдинг, алгоритмический трейдинг, торговый бот для криптовалют, бот для трейдинга, автоматический трейдинг, алгоритмическая торговля, торговый бот криптовалюты, автоматизация торговли, VEXTR, Telegram бот, криптотрейдинг, автоматическая торговля, бот для биржи" />
           <link rel="canonical" href="https://vextr.ru" />
-          {/* Favicon для главной страницы (требование Яндекс) */}
           <link rel="icon" href="https://vextr.ru/favicon.ico" type="image/x-icon" />
           <link rel="shortcut icon" href="https://vextr.ru/favicon.ico" type="image/x-icon" />
           
-          {/* Open Graph */}
           <meta property="og:title" content="Торговый бот для алго трейдинга | VEXTR — автоматическая торговля" />
           <meta property="og:description" content="Торговый бот VEXTR для алгоритмического трейдинга. Автоматическое управление торговлей криптовалютой 24/7. Подключи API и начни зарабатывать." />
           <meta property="og:url" content="https://vextr.ru" />
@@ -25,13 +23,11 @@ const Home = (props) => {
           <meta property="og:type" content="website" />
           <meta property="og:logo" content="https://vextr.ru/apple-icon.png" />
           
-          {/* Twitter Card */}
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="Торговый бот для алго трейдинга | VEXTR" />
           <meta name="twitter:description" content="Алгоритмический трейдинг с автоматической торговлей 24/7. Умное управление рисками. Подключи API и начни." />
           <meta name="twitter:image" content="https://vextr.ru/og-image.png" />
           
-          {/* Structured Data (JSON-LD) */}
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{
@@ -116,7 +112,7 @@ const Home = (props) => {
                 "url": "https://vextr.ru",
                 "logo": "https://vextr.ru/apple-icon.png",
                 "sameAs": [
-                  "https://t.me/vextr_bot",
+                  "https://t.me/VextrAlgoBot",
                   "https://t.me/vextr_auto"
                 ],
                 "contactPoint": {
@@ -197,10 +193,10 @@ const Home = (props) => {
                   Торговый бот VEXTR для алгоритмического трейдинга. Подключите биржу и начните автоматическую торговлю за несколько минут. Алго трейдинг 24/7.
                 </p>
                 <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                  <a className="btn-primary btn" href="https://t.me/vextr_bot" target="_blank" rel="noopener noreferrer" style={{ textAlign: 'center' }}>
+                  <a className="btn-primary btn" href="https://t.me/VextrAlgoBot" target="_blank" rel="noopener noreferrer" style={{ textAlign: 'center' }}>
                     Начать сейчас
                   </a>
-                  <a aria-label="Посмотреть статистику торговли" className="btn-lg btn btn-outline" href="/details">
+                  <a aria-label="Посмотреть статистику торговли" className="btn-lg btn btn-outline" href="#performance">
                     Посмотреть статистику
                   </a>
                 </div>
@@ -377,7 +373,7 @@ const Home = (props) => {
               </ol>
               <div className="how-it-works__cta">
                 <a
-                  href="https://t.me/vextr_bot"
+                  href="https://t.me/VextrAlgoBot"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-primary btn-xl btn"
@@ -581,6 +577,60 @@ const Home = (props) => {
                     }}
                   />
                 </p>
+              </div>
+            </div>
+          </section>
+          <section
+            id="partners"
+            aria-labelledby="partners-title"
+            className="partners"
+          >
+            <div className="partners__container">
+              <header className="partners__header">
+                <h2 id="partners-title" className="section-title">
+                  Мы сотрудничаем только с проверенными биржами
+                </h2>
+              </header>
+              <div className="partners__logos">
+                <a
+                  href="https://www.okx.com/join/VEXTR"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="partner-logo"
+                  aria-label="OKX партнёрская программа"
+                >
+                  <img
+                    src="/OKX Logo_White (1).png"
+                    alt="OKX"
+                    className="partner-logo__image"
+                  />
+                </a>
+                <a
+                  href="https://partner.bybit.com/b/124567"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="partner-logo"
+                  aria-label="Bybit партнёрская программа"
+                >
+                  <img
+                    src="/Bybit_Logo.svg.png"
+                    alt="Bybit"
+                    className="partner-logo__image"
+                  />
+                </a>
+                <a
+                  href="https://bingx.com/partner/VEXTR/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="partner-logo"
+                  aria-label="BingX партнёрская программа"
+                >
+                  <img
+                    src="/BingX logo_01.jpg"
+                    alt="BingX"
+                    className="partner-logo__image"
+                  />
+                </a>
               </div>
             </div>
           </section>
