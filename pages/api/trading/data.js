@@ -1,5 +1,6 @@
 // API для получения данных с KuCoin и расчета стратегии
 const TradingStrategy = require('../../../lib/trading-strategy')
+const { getCandlesFromDB, getCandlesLastUpdate, saveCandles } = require('../../../lib/db')
 const https = require('https')
 const { URL } = require('url')
 
@@ -88,9 +89,51 @@ function fetchThroughProxy(targetUrl, proxyUrl) {
   })
 }
 
-// Функция для получения свечей с KuCoin API
+// Функция для получения свечей с KuCoin API (с кэшированием в БД)
 async function getFuturesCandles(symbol, interval, options = {}) {
   try {
+    const startTime = options.startTime ? parseInt(options.startTime) : null
+    const endTime = options.endTime ? parseInt(options.endTime) : Date.now()
+    
+    // Проверяем БД перед запросом к API
+    // Если данные обновлены менее 3 дней назад, используем кэш
+    if (process.env.DB_HOST) {
+      try {
+        const lastUpdate = await getCandlesLastUpdate(symbol, interval)
+        const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000)
+        
+        if (lastUpdate && new Date(lastUpdate).getTime() > threeDaysAgo) {
+          console.log(`[KuCoin] Using cached data for ${symbol} ${interval} (last update: ${new Date(lastUpdate).toISOString()})`)
+          const cachedCandles = await getCandlesFromDB(symbol, interval, startTime, endTime)
+          
+          if (cachedCandles && cachedCandles.length > 0) {
+            // Фильтруем по временному диапазону если указан
+            let filtered = cachedCandles
+            if (startTime || endTime) {
+              const start = startTime || 0
+              const end = endTime || Date.now()
+              filtered = cachedCandles.filter(c => c.openTime >= start && c.openTime <= end)
+            }
+            
+            // Сортируем и ограничиваем лимитом
+            filtered.sort((a, b) => a.openTime - b.openTime)
+            if (options.limit && filtered.length > options.limit) {
+              filtered = filtered.slice(-options.limit)
+            }
+            
+            console.log(`[KuCoin] Returned ${filtered.length} candles from cache for ${symbol}`)
+            return filtered
+          }
+        }
+      } catch (dbError) {
+        console.warn(`[KuCoin] DB cache check failed, using API:`, dbError.message)
+        // Продолжаем с API запросом
+      }
+    }
+    
+    // Если кэш не доступен или устарел, запрашиваем из API
+    console.log(`[KuCoin] Fetching from API for ${symbol} ${interval}`)
+    
     // Используем KuCoin API v1 для спот-торговли
     // API endpoint: https://api.kucoin.com/api/v1/market/candles
     const baseUrl = 'https://api.kucoin.com/api/v1/market/candles'
@@ -231,6 +274,13 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     }
     
     console.log(`[KuCoin] Received ${allCandles.length} candles for ${symbol} (after filtering)`)
+    
+    // Сохраняем в БД для кэширования (асинхронно, не ждем)
+    if (process.env.DB_HOST && allCandles.length > 0) {
+      saveCandles(symbol, interval, allCandles).catch(err => {
+        console.warn(`[KuCoin] Failed to save candles to cache:`, err.message)
+      })
+    }
     
     return allCandles
   } catch (error) {
