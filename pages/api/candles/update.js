@@ -161,85 +161,84 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  try {
-    console.log('=== Updating candles cache in DB ===')
-    
-    // Проверяем, что БД настроена
-    if (!process.env.DB_HOST) {
-      console.error('❌ Database not configured')
-      return res.status(500).json({ 
-        error: 'Database not configured',
-        message: 'Please configure database connection'
-      })
-    }
-
-    const results = []
-    
-    // Обновляем свечи для каждой монеты
-    for (const symbol of ALL_COINS) {
-      const interval = COIN_TIMEFRAMES[symbol]
-      
-      try {
-        console.log(`📊 Updating candles for ${symbol} ${interval}...`)
-        
-        // Загружаем всю историю с 2017 года
-        const candles = await getFuturesCandles(symbol, interval, {
-          startTime: new Date('2017-01-01').getTime(),
-          endTime: Date.now()
-        })
-        
-        if (candles && candles.length > 0) {
-          // Сохраняем в БД
-          await saveCandles(symbol, interval, candles)
-          results.push({
-            symbol,
-            interval,
-            candlesCount: candles.length,
-            success: true
-          })
-          console.log(`✅ Updated ${candles.length} candles for ${symbol} ${interval}`)
-        } else {
-          results.push({
-            symbol,
-            interval,
-            candlesCount: 0,
-            success: false,
-            error: 'No candles received'
-          })
-          console.warn(`⚠️ No candles received for ${symbol} ${interval}`)
-        }
-      } catch (error) {
-        console.error(`❌ Error updating candles for ${symbol} ${interval}:`, error.message)
-        results.push({
-          symbol,
-          interval,
-          success: false,
-          error: error.message
-        })
-      }
-      
-      // Небольшая задержка между монетами чтобы не перегрузить API
-      await new Promise(resolve => setTimeout(resolve, 1000))
-    }
-    
-    const successCount = results.filter(r => r.success).length
-    const totalCandles = results.reduce((sum, r) => sum + (r.candlesCount || 0), 0)
-    
-    console.log(`✅ Candles cache update completed: ${successCount}/${ALL_COINS.length} coins, ${totalCandles} total candles`)
-    
-    return res.status(200).json({
-      success: true,
-      message: `Updated candles cache for ${successCount}/${ALL_COINS.length} coins`,
-      totalCandles,
-      results
-    })
-
-  } catch (error) {
-    console.error('❌ Error updating candles cache:', error)
+  // Проверяем, что БД настроена
+  if (!process.env.DB_HOST) {
     return res.status(500).json({ 
-      error: 'Internal server error',
-      details: error.message 
+      error: 'Database not configured',
+      message: 'Please configure database connection'
     })
   }
+
+  // Сразу возвращаем ответ, чтобы избежать таймаута cron job
+  // Обновление будет выполняться в фоне
+  res.status(202).json({
+    success: true,
+    message: 'Candles update started in background',
+    coins: ALL_COINS.length,
+    note: 'Update is running asynchronously, check logs for progress'
+  })
+
+  // Продолжаем обновление в фоне (не ждем завершения)
+  ;(async () => {
+    try {
+      console.log('=== Updating candles cache in DB (background) ===')
+      
+      const results = []
+      
+      // Обновляем свечи для каждой монеты
+      for (const symbol of ALL_COINS) {
+        const interval = COIN_TIMEFRAMES[symbol]
+        
+        try {
+          console.log(`📊 Updating candles for ${symbol} ${interval}...`)
+          
+          // Загружаем всю историю с 2017 года
+          const candles = await getFuturesCandles(symbol, interval, {
+            startTime: new Date('2017-01-01').getTime(),
+            endTime: Date.now()
+          })
+          
+          if (candles && candles.length > 0) {
+            // Сохраняем в БД
+            await saveCandles(symbol, interval, candles)
+            results.push({
+              symbol,
+              interval,
+              candlesCount: candles.length,
+              success: true
+            })
+            console.log(`✅ Updated ${candles.length} candles for ${symbol} ${interval}`)
+          } else {
+            results.push({
+              symbol,
+              interval,
+              candlesCount: 0,
+              success: false,
+              error: 'No candles received'
+            })
+            console.warn(`⚠️ No candles received for ${symbol} ${interval}`)
+          }
+        } catch (error) {
+          console.error(`❌ Error updating candles for ${symbol} ${interval}:`, error.message)
+          results.push({
+            symbol,
+            interval,
+            success: false,
+            error: error.message
+          })
+        }
+        
+        // Небольшая задержка между монетами чтобы не перегрузить API
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+      
+      const successCount = results.filter(r => r.success).length
+      const totalCandles = results.reduce((sum, r) => sum + (r.candlesCount || 0), 0)
+      
+      console.log(`✅ Candles cache update completed: ${successCount}/${ALL_COINS.length} coins, ${totalCandles} total candles`)
+    } catch (error) {
+      console.error('❌ Error updating candles cache:', error)
+    }
+  })()
 }
 
