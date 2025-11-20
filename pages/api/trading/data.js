@@ -5,7 +5,9 @@ const TradingStrategy = require('../../../lib/trading-strategy')
 function convertSymbolToOKX(symbol) {
   // Убираем USDT и добавляем -USDT-SWAP для фьючерсов
   const base = symbol.replace('USDT', '')
-  return `${base}-USDT-SWAP`
+  const okxSymbol = `${base}-USDT-SWAP`
+  console.log(`[OKX] Converting symbol: ${symbol} -> ${okxSymbol}`)
+  return okxSymbol
 }
 
 // Функция для конвертации интервала в формат OKX
@@ -43,14 +45,9 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       limit: Math.min(options.limit || 100, 100) // OKX ограничивает до 100
     })
     
-    if (options.before) {
-      params.append('before', options.before)
-    }
-    if (options.after) {
-      params.append('after', options.after)
-    }
-    
-    // Для временного диапазона используем before/after
+    // OKX использует before/after для пагинации, но для временного диапазона лучше использовать отдельные параметры
+    // before - получить данные до этого времени (в миллисекундах)
+    // after - получить данные после этого времени (в миллисекундах)
     if (options.endTime) {
       params.append('before', options.endTime)
     }
@@ -59,10 +56,19 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     }
     
     const url = `${baseUrl}?${params.toString()}`
+    
+    console.log(`[OKX] Requesting candles: ${okxSymbol} ${okxInterval}`, {
+      url,
+      startTime: options.startTime ? new Date(parseInt(options.startTime)).toISOString() : 'none',
+      endTime: options.endTime ? new Date(parseInt(options.endTime)).toISOString() : 'none',
+      limit: params.get('limit')
+    })
+    
     const response = await fetch(url)
     
     if (!response.ok) {
       const errorText = await response.text().catch(() => response.statusText)
+      console.error(`[OKX] HTTP error ${response.status}:`, errorText)
       throw new Error(`OKX API error: ${response.status} ${errorText}`)
     }
     
@@ -70,30 +76,49 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     
     // OKX возвращает { code, msg, data }
     if (result.code !== '0') {
+      console.error(`[OKX] API error code ${result.code}:`, result.msg)
       throw new Error(`OKX API error: ${result.msg || 'Unknown error'}`)
     }
     
     if (!Array.isArray(result.data)) {
+      console.warn(`[OKX] No data array in response for ${okxSymbol}`)
       return []
     }
     
+    if (result.data.length === 0) {
+      console.warn(`[OKX] Empty data array for ${okxSymbol}`)
+      return []
+    }
+    
+    console.log(`[OKX] Received ${result.data.length} candles for ${okxSymbol}`)
+    
     // Конвертируем формат OKX в формат библиотеки
     // OKX формат: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
-    return result.data.map(k => ({
-      openTime: parseInt(k[0]),
-      open: parseFloat(k[1]),
-      high: parseFloat(k[2]),
-      low: parseFloat(k[3]),
-      close: parseFloat(k[4]),
-      volume: parseFloat(k[5]),
-      closeTime: parseInt(k[0]) + (interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000) - 1,
-      quoteVolume: parseFloat(k[6]),
-      trades: 0,
-      takerBuyBaseVolume: 0,
-      takerBuyQuoteVolume: 0
-    })).reverse() // OKX возвращает в обратном порядке (новые первыми)
+    const formatted = result.data.map(k => {
+      const timestamp = parseInt(k[0])
+      const intervalMs = interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000
+      
+      return {
+        openTime: timestamp,
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+        closeTime: timestamp + intervalMs - 1,
+        quoteVolume: parseFloat(k[6]),
+        trades: 0,
+        takerBuyBaseVolume: 0,
+        takerBuyQuoteVolume: 0
+      }
+    }).reverse() // OKX возвращает в обратном порядке (новые первыми)
+    
+    return formatted
   } catch (error) {
-    console.error('OKX API error:', error.message)
+    console.error(`[OKX] Error for ${symbol}:`, error.message)
+    if (error.stack) {
+      console.error(`[OKX] Stack:`, error.stack)
+    }
     return []
   }
 }
@@ -241,14 +266,21 @@ export default async function handler(req, res) {
         }
       }
       
-      // Логируем только если есть свечи
+      // Логируем результат получения свечей
       if (candles && candles.length > 0) {
-        console.log('Received candles from OKX:', candles.length)
-      }
-      
-      // Если нет свечей, возвращаем пустой результат вместо ошибки
-      if (!candles || candles.length === 0) {
-        // Не логируем, так как это может быть из-за географических ограничений
+        console.log(`[OKX] Successfully received ${candles.length} candles for ${symbol}`)
+        console.log(`[OKX] First candle:`, {
+          time: new Date(candles[0].openTime).toISOString(),
+          open: candles[0].open,
+          close: candles[0].close
+        })
+        console.log(`[OKX] Last candle:`, {
+          time: new Date(candles[candles.length - 1].openTime).toISOString(),
+          open: candles[candles.length - 1].open,
+          close: candles[candles.length - 1].close
+        })
+      } else {
+        console.warn(`[OKX] No candles received for ${symbol}`)
         candles = []
       }
     } catch (okxError) {
@@ -313,9 +345,12 @@ export default async function handler(req, res) {
     // Запуск бэктеста (если есть свечи)
     let results = null
     try {
+      console.log(`[Backtest] Starting with ${formattedCandles.length} candles for ${symbol}`)
       if (formattedCandles.length > 0) {
         results = strategy.backtest(formattedCandles)
+        console.log(`[Backtest] Completed: ${results.trades?.length || 0} trades, PnL: ${results.totalPnlPercent || 0}%`)
       } else {
+        console.warn(`[Backtest] No candles available for ${symbol}, creating empty result`)
         // Если нет свечей, создаем пустой результат
         results = {
           trades: [],
