@@ -31,8 +31,8 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     if (!response.ok) {
       // Для ошибки 451 (географические ограничения) возвращаем понятное сообщение
       if (response.status === 451) {
-        const errorText = await response.text().catch(() => 'Service unavailable from restricted location')
-        throw new Error(`Binance API restricted (451): ${errorText}`)
+        // Не логируем каждый раз, просто возвращаем пустой массив
+        return []
       }
       const errorText = await response.text().catch(() => response.statusText)
       throw new Error(`Futures API error: ${response.status} ${errorText}`)
@@ -60,12 +60,12 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       takerBuyQuoteVolume: k[10]
     }))
   } catch (error) {
-    console.error('Futures API error:', error.message)
-    
-    // Для ошибки 451 не пробуем spot API, так как она тоже будет заблокирована
+    // Для ошибки 451 не логируем и не пробуем spot API, просто возвращаем пустой массив
     if (error.message.includes('451') || error.message.includes('restricted')) {
-      throw error
+      return []
     }
+    
+    console.error('Futures API error:', error.message)
     
     // Fallback: пробуем использовать spot API (на случай если символ не фьючерсный)
     console.warn('Falling back to spot API')
@@ -73,7 +73,7 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       return await client.candles({ symbol, interval, ...options })
     } catch (spotError) {
       console.error('Spot API also failed:', spotError.message)
-      throw error
+      return []
     }
   }
 }
@@ -105,7 +105,10 @@ export default async function handler(req, res) {
           candles = await getFuturesCandles(symbol, binanceInterval, { limit: parseInt(limit) })
         }
       } catch (error) {
-        console.error(`Binance API error (candles only) for ${symbol}:`, error.message)
+        // Логируем только если это не ошибка 451 (географические ограничения)
+        if (!error.message.includes('451') && !error.message.includes('restricted')) {
+          console.error(`Binance API error (candles only) for ${symbol}:`, error.message)
+        }
         // Возвращаем пустой результат вместо ошибки, чтобы не ломать загрузку других монет
         return res.status(200).json({
           success: false,
@@ -115,7 +118,9 @@ export default async function handler(req, res) {
           trades: [],
           statistics: null,
           closedTrades: [],
-          error: `Failed to fetch candles for ${symbol}: ${error.message}`
+          error: error.message.includes('451') || error.message.includes('restricted') 
+            ? 'Service unavailable from restricted location' 
+            : `Failed to fetch candles for ${symbol}: ${error.message}`
         })
       }
       
