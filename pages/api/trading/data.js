@@ -1,105 +1,180 @@
-// API для получения данных с Bybit и расчета стратегии
+// API для получения данных с KuCoin и расчета стратегии
 const TradingStrategy = require('../../../lib/trading-strategy')
+const https = require('https')
+const { URL } = require('url')
 
-// Функция для конвертации интервала в формат Bybit
-function convertIntervalToBybit(interval) {
+// Функция для конвертации символа в формат KuCoin (BTCUSDT -> BTC-USDT)
+function convertSymbolToKuCoin(symbol) {
+  const base = symbol.replace('USDT', '')
+  return `${base}-USDT`
+}
+
+// Функция для конвертации интервала в формат KuCoin
+function convertIntervalToKuCoin(interval) {
   const mapping = {
-    '1m': '1',
-    '3m': '3',
-    '5m': '5',
-    '15m': '15',
-    '30m': '30',
-    '1h': '60',
-    '2h': '120',
-    '4h': '240',
-    '6h': '360',
-    '12h': '720',
-    '1d': 'D',
-    '1w': 'W',
-    '1M': 'M'
+    '1m': '1min',
+    '3m': '3min',
+    '5m': '5min',
+    '15m': '15min',
+    '30m': '30min',
+    '1h': '1hour',
+    '2h': '2hour',
+    '4h': '4hour',
+    '6h': '6hour',
+    '8h': '8hour',
+    '12h': '12hour',
+    '1d': '1day',
+    '1w': '1week'
   }
   return mapping[interval] || interval
 }
 
-// Функция для получения свечей с Bybit API
-async function getFuturesCandles(symbol, interval, options = {}) {
-  try {
-    // Используем Bybit API v5 для фьючерсов
-    // API endpoint: https://api.bybit.com/v5/market/kline
-    const baseUrl = 'https://api.bybit.com/v5/market/kline'
-    const bybitInterval = convertIntervalToBybit(interval)
+// Функция для запроса через прокси
+function fetchThroughProxy(targetUrl, proxyUrl) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(targetUrl)
+    const proxy = new URL(proxyUrl)
     
-    // Bybit API ограничивает limit до 200
-    const maxLimit = 200
-    let allCandles = []
-    let endTime = options.endTime ? parseInt(options.endTime) : null
-    let attempts = 0
-    const maxAttempts = options.startTime ? 10 : 1
+    const options = {
+      hostname: proxy.hostname,
+      port: proxy.port || 443,
+      path: targetUrl,
+      method: 'GET',
+      headers: {
+        'Host': target.hostname,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json'
+      }
+    }
     
-    while (attempts < maxAttempts) {
-      const params = new URLSearchParams({
-        category: 'linear', // USDT фьючерсы
-        symbol: symbol,
-        interval: bybitInterval,
-        limit: maxLimit.toString()
+    // Если прокси требует авторизацию
+    if (proxy.username && proxy.password) {
+      const auth = Buffer.from(`${proxy.username}:${proxy.password}`).toString('base64')
+      options.headers['Proxy-Authorization'] = `Basic ${auth}`
+    }
+    
+    const req = https.request(options, (res) => {
+      let data = ''
+      
+      res.on('data', (chunk) => {
+        data += chunk
       })
       
-      // Bybit использует start и end для временного диапазона (в миллисекундах)
-      if (endTime) {
-        params.append('end', endTime.toString())
-      }
-      if (options.startTime) {
-        params.append('start', options.startTime.toString())
+      res.on('end', () => {
+        if (res.statusCode === 403 || data.includes('CloudFront') || data.includes('block access from your country')) {
+          console.warn(`[KuCoin] Access blocked (403) via proxy - geographic restriction`)
+          resolve(null)
+          return
+        }
+        
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode}: ${data.substring(0, 200)}`))
+          return
+        }
+        
+        try {
+          resolve(JSON.parse(data))
+        } catch (e) {
+          reject(new Error(`JSON parse error: ${e.message}`))
+        }
+      })
+    })
+    
+    req.on('error', (error) => {
+      reject(error)
+    })
+    
+    req.end()
+  })
+}
+
+// Функция для получения свечей с KuCoin API
+async function getFuturesCandles(symbol, interval, options = {}) {
+  try {
+    // Используем KuCoin API v1 для спот-торговли
+    // API endpoint: https://api.kucoin.com/api/v1/market/candles
+    const baseUrl = 'https://api.kucoin.com/api/v1/market/candles'
+    const kucoinSymbol = convertSymbolToKuCoin(symbol)
+    const kucoinInterval = convertIntervalToKuCoin(interval)
+    
+    // KuCoin API ограничивает limit до 200 свечей за запрос
+    // Нужно делать пагинацию через startAt/endAt
+    const maxLimit = 200
+    let allCandles = []
+    let endAt = options.endTime ? Math.floor(parseInt(options.endTime) / 1000) : Math.floor(Date.now() / 1000)
+    let attempts = 0
+    const maxAttempts = 500 // Много попыток для получения всей истории (может быть много лет данных)
+    
+    // Определяем targetStartTime - если не указан, берем с 2017 года
+    // Но если указан limit, ограничиваем диапазон для ускорения
+    let targetStartTime = options.startTime ? Math.floor(parseInt(options.startTime) / 1000) : Math.floor(new Date('2017-01-01').getTime() / 1000)
+    
+    // Оптимизация: если указан limit, вычисляем минимальный startTime для этого лимита
+    if (options.limit && !options.startTime) {
+      const intervalSeconds = interval === '1h' ? 3600 : interval === '4h' ? 14400 : 86400
+      const limitSeconds = parseInt(options.limit) * intervalSeconds
+      const minStartTime = endAt - limitSeconds
+      // Берем максимум из 2017 года и вычисленного времени для лимита
+      targetStartTime = Math.max(targetStartTime, minStartTime)
+      console.log(`[KuCoin] Optimized startTime based on limit ${options.limit}: ${new Date(targetStartTime * 1000).toISOString()}`)
+    }
+    
+    console.log(`[KuCoin] Fetching history for ${symbol} from ${new Date(targetStartTime * 1000).toISOString()} to ${new Date(endAt * 1000).toISOString()}`)
+    
+    while (attempts < maxAttempts) {
+      // KuCoin API использует startAt и endAt в секундах
+      const params = new URLSearchParams({
+        symbol: kucoinSymbol,
+        type: kucoinInterval,
+        limit: maxLimit.toString(),
+        endAt: endAt.toString()
+      })
+      
+      // Если есть startAt, добавляем его
+      if (targetStartTime && endAt > targetStartTime) {
+        // Вычисляем startAt для этого батча (200 свечей назад от endAt)
+        const intervalSeconds = interval === '1h' ? 3600 : interval === '4h' ? 14400 : 86400
+        const batchDuration = maxLimit * intervalSeconds
+        const startAt = Math.max(targetStartTime, endAt - batchDuration)
+        params.append('startAt', startAt.toString())
       }
       
       const url = `${baseUrl}?${params.toString()}`
       
       const response = await fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Accept': 'application/json'
         }
       })
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => response.statusText)
-        
-        // Если это 403 (блокировка по стране), возвращаем пустой массив без ошибки
-        if (response.status === 403 || errorText.includes('CloudFront') || errorText.includes('block access from your country')) {
-          console.warn(`[Bybit] Access blocked (403) for ${symbol} - geographic restriction`)
-          return [] // Возвращаем пустой массив вместо ошибки
-        }
-        
-        console.error(`[Bybit] HTTP error ${response.status}:`, errorText.substring(0, 200))
+        console.error(`[KuCoin] HTTP error ${response.status}:`, errorText.substring(0, 200))
         break
       }
       
       const result = await response.json()
       
-      // Bybit возвращает { retCode, retMsg, result: { list: [...] } }
-      if (result.retCode !== 0) {
-        console.error(`[Bybit] API error code ${result.retCode}:`, result.retMsg)
+      // KuCoin возвращает { code: "200000", data: [...] }
+      if (result.code !== '200000' || !Array.isArray(result.data) || result.data.length === 0) {
         break
       }
       
-      if (!result.result || !Array.isArray(result.result.list) || result.result.list.length === 0) {
-        break
-      }
-      
-      // Конвертируем формат Bybit в формат библиотеки
-      // Bybit формат: [startTime, open, high, low, close, volume, turnover]
+      // Конвертируем формат KuCoin в формат библиотеки
+      // KuCoin формат: [time (секунды), open, close, high, low, volume, amount]
+      // KuCoin возвращает данные в обратном порядке (новые первыми)
       const intervalMs = interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000
-      const batch = result.result.list.map(k => {
-        const timestamp = parseInt(k[0])
+      const batch = result.data.map(k => {
+        const timestamp = parseInt(k[0]) * 1000 // Конвертируем из секунд в миллисекунды
         return {
           openTime: timestamp,
-          open: parseFloat(k[1]),
-          high: parseFloat(k[2]),
-          low: parseFloat(k[3]),
-          close: parseFloat(k[4]),
+          open: parseFloat(k[1]), // KuCoin: [time, open, close, high, low, volume, amount]
+          high: parseFloat(k[3]),
+          low: parseFloat(k[4]),
+          close: parseFloat(k[2]),
           volume: parseFloat(k[5]),
           closeTime: timestamp + intervalMs - 1,
-          quoteVolume: parseFloat(k[6]),
+          quoteVolume: parseFloat(k[6]) || (parseFloat(k[5]) * parseFloat(k[2])), // amount или volume * close
           trades: 0,
           takerBuyBaseVolume: 0,
           takerBuyQuoteVolume: 0
@@ -108,20 +183,35 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       
       allCandles = [...allCandles, ...batch]
       
-      // Если есть startTime и самая старая свеча еще не достигнута, продолжаем
-      if (options.startTime && batch.length === maxLimit) {
-        const oldestTimestamp = Math.min(...batch.map(c => c.openTime))
-        if (oldestTimestamp > parseInt(options.startTime)) {
-          endTime = oldestTimestamp - 1
-          attempts++
-          // Небольшая задержка между пагинационными запросами
-          await new Promise(resolve => setTimeout(resolve, 100))
-          continue
-        }
+      // Находим самую старую свечу в батче
+      const oldestTimestamp = Math.min(...batch.map(c => c.openTime))
+      const oldestDate = new Date(oldestTimestamp).toISOString()
+      
+      console.log(`[KuCoin] Batch ${attempts + 1}: received ${batch.length} candles, total: ${allCandles.length}, oldest: ${oldestDate}`)
+      
+      // Проверяем, достигли ли мы targetStartTime
+      if (oldestTimestamp <= targetStartTime * 1000) {
+        console.log(`[KuCoin] Reached target start time, stopping pagination`)
+        break
       }
       
+      // Если получили меньше maxLimit свечей, но еще не достигли targetStartTime, продолжаем
+      // Если получили maxLimit свечей, обязательно продолжаем
+      if (batch.length > 0 && oldestTimestamp > targetStartTime * 1000) {
+        // Обновляем endAt для следующего запроса - берем время самой старой свечи минус 1 секунда
+        endAt = Math.floor(oldestTimestamp / 1000) - 1
+        attempts++
+        
+        // Минимальная задержка только для избежания rate limits (KuCoin обычно позволяет быстрые запросы)
+        // Убираем задержку для ускорения загрузки
+        continue
+      }
+      
+      // Если получили пустой батч или 0 свечей, останавливаемся
       break
     }
+    
+    console.log(`[KuCoin] Total fetched: ${allCandles.length} candles for ${symbol}`)
     
     // Фильтруем по временному диапазону если указан
     if (options.startTime || options.endTime) {
@@ -140,13 +230,13 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       allCandles = allCandles.slice(-options.limit) // Берем последние N свечей
     }
     
-    console.log(`[Bybit] Received ${allCandles.length} candles for ${symbol} (after filtering)`)
+    console.log(`[KuCoin] Received ${allCandles.length} candles for ${symbol} (after filtering)`)
     
     return allCandles
   } catch (error) {
-    console.error(`[Bybit] Error for ${symbol}:`, error.message)
+    console.error(`[KuCoin] Error for ${symbol}:`, error.message)
     if (error.stack) {
-      console.error(`[Bybit] Stack:`, error.stack)
+      console.error(`[KuCoin] Stack:`, error.stack)
     }
     return []
   }
@@ -162,7 +252,7 @@ export default async function handler(req, res) {
     
       // Если запрашивают только свечи (без стратегии), возвращаем быстро
       if (candlesOnly === 'true') {
-        const bybitInterval = timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d'
+        const kucoinInterval = timeframe === '1h' ? '1hour' : timeframe === '4h' ? '4hour' : '1day'
       
       let candles = []
       try {
@@ -173,13 +263,13 @@ export default async function handler(req, res) {
             console.warn('Invalid time range for candles only request')
             candles = []
           } else {
-            candles = await getFuturesCandles(symbol, bybitInterval, { startTime: startTimeNum, endTime: endTimeNum, limit: parseInt(limit) })
+            candles = await getFuturesCandles(symbol, kucoinInterval, { startTime: startTimeNum, endTime: endTimeNum, limit: parseInt(limit) })
           }
         } else {
-          candles = await getFuturesCandles(symbol, bybitInterval, { limit: parseInt(limit) })
+          candles = await getFuturesCandles(symbol, kucoinInterval, { limit: parseInt(limit) })
         }
       } catch (error) {
-        console.error(`Bybit API error (candles only) for ${symbol}:`, error.message)
+        console.error(`KuCoin API error (candles only) for ${symbol}:`, error.message)
         // Возвращаем пустой результат вместо ошибки, чтобы не ломать загрузку других монет
         return res.status(200).json({
           success: false,
@@ -245,13 +335,13 @@ export default async function handler(req, res) {
       timeframe
     }
 
-    // Конвертация таймфрейма для Bybit
-    const bybitInterval = timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d'
+    // Конвертация таймфрейма для KuCoin
+    const kucoinInterval = timeframe === '1h' ? '1hour' : timeframe === '4h' ? '4hour' : '1day'
 
-    // Получение свечей с Bybit
+    // Получение свечей с KuCoin
     let candles
     try {
-      console.log('Fetching candles from Bybit:', { symbol, interval: bybitInterval, limit, startTime, endTime })
+      console.log('Fetching candles from KuCoin:', { symbol, interval: kucoinInterval, limit, startTime, endTime })
       
       if (startTime && endTime) {
         const startTimeNum = parseInt(startTime)
@@ -262,60 +352,61 @@ export default async function handler(req, res) {
           console.warn('Invalid time range, returning empty result', { startTimeNum, endTimeNum })
           candles = []
         } else {
-          // Убираем ограничение на старые данные - загружаем всю историю
-          // Bybit фьючерсы имеют историю с момента запуска контракта
+          // Загружаем всю историю через пагинацию
+          // KuCoin спот имеет историю с момента запуска торговли
           try {
-            candles = await getFuturesCandles(symbol, bybitInterval, {
+            // Для получения всей истории не ограничиваем limit
+            candles = await getFuturesCandles(symbol, kucoinInterval, {
               startTime: startTimeNum,
               endTime: endTimeNum,
-              limit: parseInt(limit)
+              limit: 100000 // Большое число, чтобы получить всю историю через пагинацию
             })
-            console.log(`Bybit returned ${candles?.length || 0} candles for range`, {
+            console.log(`KuCoin returned ${candles?.length || 0} candles for range`, {
               start: new Date(startTimeNum).toISOString(),
               end: new Date(endTimeNum).toISOString()
             })
           } catch (apiError) {
-            console.error('Bybit API call failed:', apiError.message)
+            console.error('KuCoin API call failed:', apiError.message)
             candles = []
           }
         }
       } else {
         // Без временного диапазона - берем последние свечи
         try {
-          candles = await getFuturesCandles(symbol, bybitInterval, {
+          candles = await getFuturesCandles(symbol, kucoinInterval, {
             limit: parseInt(limit)
           })
-          console.log(`Bybit returned ${candles?.length || 0} candles (no time range)`)
+          console.log(`KuCoin returned ${candles?.length || 0} candles (no time range)`)
         } catch (apiError) {
-          console.error('Bybit API call failed (no time range):', apiError.message)
+          console.error('KuCoin API call failed (no time range):', apiError.message)
           candles = []
         }
       }
       
       // Логируем результат получения свечей
       if (candles && candles.length > 0) {
-        console.log(`[Bybit] Successfully received ${candles.length} candles for ${symbol}`)
-        console.log(`[Bybit] First candle:`, {
+        console.log(`[KuCoin] Successfully received ${candles.length} candles for ${symbol}`)
+        console.log(`[KuCoin] First candle:`, {
           time: new Date(candles[0].openTime).toISOString(),
           open: candles[0].open,
           close: candles[0].close
         })
-        console.log(`[Bybit] Last candle:`, {
+        console.log(`[KuCoin] Last candle:`, {
           time: new Date(candles[candles.length - 1].openTime).toISOString(),
           open: candles[candles.length - 1].open,
           close: candles[candles.length - 1].close
         })
       } else {
-        console.warn(`[Bybit] No candles received for ${symbol}`)
+        console.warn(`[KuCoin] No candles received for ${symbol}`)
         candles = []
       }
-    } catch (okxError) {
-      console.error('OKX API error:', okxError)
+    } catch (kucoinError) {
+      console.error('KuCoin API error:', kucoinError)
       
-      // Для любых ошибок OKX возвращаем пустой результат вместо 500
+      // Для любых ошибок KuCoin возвращаем пустой результат вместо 500
       // Это позволяет продолжать работу даже если некоторые запросы не удались
-      console.warn('OKX error, returning empty result to continue', {
-        error: okxError.message || okxError.toString(),
+      console.warn('KuCoin error, returning empty result to continue', {
+        error: kucoinError.message || kucoinError.toString(),
         symbol,
         startTime,
         endTime
@@ -354,7 +445,7 @@ export default async function handler(req, res) {
       })
     }
 
-    // Преобразование данных Bybit в формат для стратегии
+    // Преобразование данных KuCoin в формат для стратегии
     const formattedCandles = candles.map(candle => ({
       timestamp: candle.openTime,
       open: parseFloat(candle.open),

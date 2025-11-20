@@ -39,44 +39,50 @@ const STRATEGY_PARAMS = {
   rsiShortFilter: 50
 }
 
-// Функция для конвертации интервала в формат Bybit
-function convertIntervalToBybit(interval) {
+// Функция для конвертации символа в формат KuCoin (BTCUSDT -> BTC-USDT)
+function convertSymbolToKuCoin(symbol) {
+  const base = symbol.replace('USDT', '')
+  return `${base}-USDT`
+}
+
+// Функция для конвертации интервала в формат KuCoin
+function convertIntervalToKuCoin(interval) {
   const mapping = {
-    '1m': '1',
-    '3m': '3',
-    '5m': '5',
-    '15m': '15',
-    '30m': '30',
-    '1h': '60',
-    '2h': '120',
-    '4h': '240',
-    '6h': '360',
-    '12h': '720',
-    '1d': 'D',
-    '1w': 'W',
-    '1M': 'M'
+    '1m': '1min',
+    '3m': '3min',
+    '5m': '5min',
+    '15m': '15min',
+    '30m': '30min',
+    '1h': '1hour',
+    '2h': '2hour',
+    '4h': '4hour',
+    '6h': '6hour',
+    '8h': '8hour',
+    '12h': '12hour',
+    '1d': '1day',
+    '1w': '1week'
   }
   return mapping[interval] || interval
 }
 
-// Функция для получения свечей с Bybit API
+// Функция для получения свечей с KuCoin API
 async function getFuturesCandles(symbol, interval, options = {}) {
   try {
-    const baseUrl = 'https://api.bybit.com/v5/market/kline'
-    const bybitInterval = convertIntervalToBybit(interval)
+    const baseUrl = 'https://api.kucoin.com/api/v1/market/candles'
+    const kucoinSymbol = convertSymbolToKuCoin(symbol)
+    const kucoinInterval = convertIntervalToKuCoin(interval)
     
     const queryParams = []
-    queryParams.push(`category=linear`)
-    queryParams.push(`symbol=${encodeURIComponent(symbol)}`)
-    queryParams.push(`interval=${encodeURIComponent(bybitInterval)}`)
-    const limit = Math.min(options.limit || 200, 200) // Bybit ограничивает до 200
+    queryParams.push(`symbol=${encodeURIComponent(kucoinSymbol)}`)
+    queryParams.push(`type=${encodeURIComponent(kucoinInterval)}`)
+    const limit = Math.min(options.limit || 200, 200) // KuCoin ограничивает до 200
     queryParams.push(`limit=${limit}`)
     
     if (options.startTime) {
-      queryParams.push(`start=${options.startTime}`)
+      queryParams.push(`startAt=${Math.floor(options.startTime / 1000)}`) // Конвертируем в секунды
     }
     if (options.endTime) {
-      queryParams.push(`end=${options.endTime}`)
+      queryParams.push(`endAt=${Math.floor(options.endTime / 1000)}`) // Конвертируем в секунды
     }
     
     const url = `${baseUrl}?${queryParams.join('&')}`
@@ -84,13 +90,7 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     return new Promise((resolve) => {
       https.get(url, (res) => {
         if (res.statusCode !== 200) {
-          // Если это 403 (блокировка по стране), возвращаем пустой массив без ошибки
-          if (res.statusCode === 403) {
-            console.warn(`[${symbol}] Bybit access blocked (403) - geographic restriction`)
-            resolve([])
-            return
-          }
-          console.error(`[${symbol}] Bybit API error: ${res.statusCode} ${res.statusMessage}`)
+          console.error(`[${symbol}] KuCoin API error: ${res.statusCode} ${res.statusMessage}`)
           resolve([])
           return
         }
@@ -98,37 +98,26 @@ async function getFuturesCandles(symbol, interval, options = {}) {
         let data = ''
         res.on('data', (chunk) => { data += chunk })
         res.on('end', () => {
-          // Проверяем на CloudFront блокировку в ответе
-          if (data.includes('CloudFront') || data.includes('block access from your country')) {
-            console.warn(`[${symbol}] Bybit access blocked (CloudFront) - geographic restriction`)
-            resolve([])
-            return
-          }
           try {
             const result = JSON.parse(data)
-            if (result.retCode !== 0) {
-              console.error(`[${symbol}] Bybit API error:`, result.retCode, result.retMsg)
-              resolve([])
-              return
-            }
             
-            if (result.result && Array.isArray(result.result.list) && result.result.list.length > 0) {
-              // Bybit формат: [startTime, open, high, low, close, volume, turnover]
+            // KuCoin возвращает { code: "200000", data: [...] }
+            if (result.code === '200000' && Array.isArray(result.data) && result.data.length > 0) {
               const intervalMs = interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000
-              const formatted = result.result.list.map(k => ({
-                openTime: parseInt(k[0]),
-                open: parseFloat(k[1]),
-                high: parseFloat(k[2]),
-                low: parseFloat(k[3]),
-                close: parseFloat(k[4]),
+              const formatted = result.data.map(k => ({
+                openTime: parseInt(k[0]) * 1000, // Конвертируем из секунд в миллисекунды
+                open: parseFloat(k[1]), // KuCoin: [time, open, close, high, low, volume, amount]
+                high: parseFloat(k[3]),
+                low: parseFloat(k[4]),
+                close: parseFloat(k[2]),
                 volume: parseFloat(k[5]),
-                closeTime: parseInt(k[0]) + intervalMs - 1,
-                quoteVolume: parseFloat(k[6]),
+                closeTime: parseInt(k[0]) * 1000 + intervalMs - 1,
+                quoteVolume: parseFloat(k[6]) || (parseFloat(k[5]) * parseFloat(k[2])), // amount или volume * close
                 trades: 0,
                 takerBuyBaseVolume: 0,
                 takerBuyQuoteVolume: 0
               }))
-              console.log(`[${symbol}] Successfully received ${formatted.length} candles`)
+              console.log(`[${symbol}] Successfully received ${formatted.length} candles from KuCoin`)
               resolve(formatted)
             } else {
               resolve([])
@@ -144,7 +133,7 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       })
     })
   } catch (error) {
-    console.error(`Bybit API error for ${symbol}:`, error.message)
+    console.error(`KuCoin API error for ${symbol}:`, error.message)
     return []
   }
 }
