@@ -13,4 +13,23 @@ module.exports = {
     },
     responseLimit: '10mb',
   },
+  // Настройки для предотвращения проблем с загрузкой чанков
+  generateBuildId: async () => {
+    // Используем timestamp для уникальности билда
+    return `build-${Date.now()}`
+  },
+  // Настройки кэширования для статических файлов
+  async headers() {
+    return [
+      {
+        source: '/_next/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+    ]
+  },
 }
