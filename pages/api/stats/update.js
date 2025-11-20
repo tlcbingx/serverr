@@ -59,6 +59,19 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     
     return new Promise((resolve) => {
       https.get(url, (res) => {
+        // Проверяем статус ответа
+        if (res.statusCode === 451) {
+          console.error(`Binance API restricted (451) for ${symbol}: Service unavailable from restricted location`)
+          resolve([])
+          return
+        }
+        
+        if (res.statusCode !== 200) {
+          console.error(`Binance API error for ${symbol}: ${res.statusCode} ${res.statusMessage}`)
+          resolve([])
+          return
+        }
+        
         let data = ''
         res.on('data', (chunk) => { data += chunk })
         res.on('end', () => {

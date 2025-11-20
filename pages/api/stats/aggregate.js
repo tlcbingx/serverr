@@ -73,6 +73,19 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     // Используем встроенный модуль https для запроса
     return new Promise((resolve, reject) => {
       https.get(url, (res) => {
+        // Проверяем статус ответа перед парсингом
+        if (res.statusCode === 451) {
+          console.error(`[${symbol}] Binance API restricted (451): Service unavailable from restricted location`)
+          resolve([])
+          return
+        }
+        
+        if (res.statusCode !== 200) {
+          console.error(`[${symbol}] Binance API error: ${res.statusCode} ${res.statusMessage}`)
+          resolve([])
+          return
+        }
+        
         let data = ''
         
         // Логируем статус ответа

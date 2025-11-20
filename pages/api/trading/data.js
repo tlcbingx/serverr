@@ -27,11 +27,23 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     const url = `${baseUrl}?${params.toString()}`
     const response = await fetch(url)
     
+    // Проверяем статус ответа перед парсингом
     if (!response.ok) {
-      throw new Error(`Futures API error: ${response.status} ${response.statusText}`)
+      // Для ошибки 451 (географические ограничения) возвращаем понятное сообщение
+      if (response.status === 451) {
+        const errorText = await response.text().catch(() => 'Service unavailable from restricted location')
+        throw new Error(`Binance API restricted (451): ${errorText}`)
+      }
+      const errorText = await response.text().catch(() => response.statusText)
+      throw new Error(`Futures API error: ${response.status} ${errorText}`)
     }
     
     const klines = await response.json()
+    
+    // Проверяем, что получили массив
+    if (!Array.isArray(klines)) {
+      throw new Error('Invalid response format from Binance API')
+    }
     
     // Конвертируем формат Binance в формат библиотеки
     return klines.map(k => ({
@@ -49,6 +61,12 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     }))
   } catch (error) {
     console.error('Futures API error:', error.message)
+    
+    // Для ошибки 451 не пробуем spot API, так как она тоже будет заблокирована
+    if (error.message.includes('451') || error.message.includes('restricted')) {
+      throw error
+    }
+    
     // Fallback: пробуем использовать spot API (на случай если символ не фьючерсный)
     console.warn('Falling back to spot API')
     try {
