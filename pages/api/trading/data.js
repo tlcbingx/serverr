@@ -125,7 +125,8 @@ export default async function handler(req, res) {
       }
       
       if (!candles || candles.length === 0) {
-        console.warn(`No candles received for ${symbol}`)
+        // Не логируем, если это из-за географических ограничений (451)
+        // console.warn(`No candles received for ${symbol}`)
         return res.status(200).json({
           success: false,
           symbol,
@@ -220,11 +221,14 @@ export default async function handler(req, res) {
         }
       }
       
-      console.log('Received candles from Binance:', candles?.length || 0)
+      // Логируем только если есть свечи, чтобы не засорять логи при ошибках 451
+      if (candles && candles.length > 0) {
+        console.log('Received candles from Binance:', candles.length)
+      }
       
       // Если нет свечей, возвращаем пустой результат вместо ошибки
       if (!candles || candles.length === 0) {
-        console.warn('No candles received, returning empty result')
+        // Не логируем, так как это может быть из-за географических ограничений
         candles = []
       }
     } catch (binanceError) {
