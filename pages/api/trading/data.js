@@ -1,80 +1,100 @@
-// API для получения данных с Binance и расчета стратегии
-const Binance = require('binance-api-node').default
+// API для получения данных с OKX и расчета стратегии
 const TradingStrategy = require('../../../lib/trading-strategy')
 
-// Инициализация Binance клиента (публичный доступ, без ключей)
-const client = Binance()
+// Функция для конвертации символа в формат OKX (BTCUSDT -> BTC-USDT-SWAP для фьючерсов)
+function convertSymbolToOKX(symbol) {
+  // Убираем USDT и добавляем -USDT-SWAP для фьючерсов
+  const base = symbol.replace('USDT', '')
+  return `${base}-USDT-SWAP`
+}
 
-// Функция для получения свечей с фьючерсов Binance
+// Функция для конвертации интервала в формат OKX
+function convertIntervalToOKX(interval) {
+  const mapping = {
+    '1m': '1m',
+    '3m': '3m',
+    '5m': '5m',
+    '15m': '15m',
+    '30m': '30m',
+    '1h': '1H',
+    '2h': '2H',
+    '4h': '4H',
+    '6h': '6H',
+    '12h': '12H',
+    '1d': '1D',
+    '1w': '1W',
+    '1M': '1M'
+  }
+  return mapping[interval] || interval.toUpperCase()
+}
+
+// Функция для получения свечей с OKX API
 async function getFuturesCandles(symbol, interval, options = {}) {
   try {
-    // Используем прямой запрос к Binance Futures API
-    // Futures API endpoint: https://fapi.binance.com/fapi/v1/klines
-    const baseUrl = 'https://fapi.binance.com/fapi/v1/klines'
+    // Используем OKX API v5 для фьючерсов
+    // API endpoint: https://www.okx.com/api/v5/market/candles
+    const baseUrl = 'https://www.okx.com/api/v5/market/candles'
+    const okxSymbol = convertSymbolToOKX(symbol)
+    const okxInterval = convertIntervalToOKX(interval)
+    
     const params = new URLSearchParams({
-      symbol: symbol,
-      interval: interval,
-      limit: options.limit || 1000
+      instId: okxSymbol,
+      bar: okxInterval,
+      limit: Math.min(options.limit || 100, 100) // OKX ограничивает до 100
     })
     
-    if (options.startTime) {
-      params.append('startTime', options.startTime)
+    if (options.before) {
+      params.append('before', options.before)
     }
+    if (options.after) {
+      params.append('after', options.after)
+    }
+    
+    // Для временного диапазона используем before/after
     if (options.endTime) {
-      params.append('endTime', options.endTime)
+      params.append('before', options.endTime)
+    }
+    if (options.startTime) {
+      params.append('after', options.startTime)
     }
     
     const url = `${baseUrl}?${params.toString()}`
     const response = await fetch(url)
     
-    // Проверяем статус ответа перед парсингом
     if (!response.ok) {
-      // Для ошибки 451 (географические ограничения) возвращаем понятное сообщение
-      if (response.status === 451) {
-        // Не логируем каждый раз, просто возвращаем пустой массив
-        return []
-      }
       const errorText = await response.text().catch(() => response.statusText)
-      throw new Error(`Futures API error: ${response.status} ${errorText}`)
+      throw new Error(`OKX API error: ${response.status} ${errorText}`)
     }
     
-    const klines = await response.json()
+    const result = await response.json()
     
-    // Проверяем, что получили массив
-    if (!Array.isArray(klines)) {
-      throw new Error('Invalid response format from Binance API')
+    // OKX возвращает { code, msg, data }
+    if (result.code !== '0') {
+      throw new Error(`OKX API error: ${result.msg || 'Unknown error'}`)
     }
     
-    // Конвертируем формат Binance в формат библиотеки
-    return klines.map(k => ({
-      openTime: k[0],
-      open: k[1],
-      high: k[2],
-      low: k[3],
-      close: k[4],
-      volume: k[5],
-      closeTime: k[6],
-      quoteVolume: k[7],
-      trades: k[8],
-      takerBuyBaseVolume: k[9],
-      takerBuyQuoteVolume: k[10]
-    }))
+    if (!Array.isArray(result.data)) {
+      return []
+    }
+    
+    // Конвертируем формат OKX в формат библиотеки
+    // OKX формат: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+    return result.data.map(k => ({
+      openTime: parseInt(k[0]),
+      open: parseFloat(k[1]),
+      high: parseFloat(k[2]),
+      low: parseFloat(k[3]),
+      close: parseFloat(k[4]),
+      volume: parseFloat(k[5]),
+      closeTime: parseInt(k[0]) + (interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000) - 1,
+      quoteVolume: parseFloat(k[6]),
+      trades: 0,
+      takerBuyBaseVolume: 0,
+      takerBuyQuoteVolume: 0
+    })).reverse() // OKX возвращает в обратном порядке (новые первыми)
   } catch (error) {
-    // Для ошибки 451 не логируем и не пробуем spot API, просто возвращаем пустой массив
-    if (error.message.includes('451') || error.message.includes('restricted')) {
-      return []
-    }
-    
-    console.error('Futures API error:', error.message)
-    
-    // Fallback: пробуем использовать spot API (на случай если символ не фьючерсный)
-    console.warn('Falling back to spot API')
-    try {
-      return await client.candles({ symbol, interval, ...options })
-    } catch (spotError) {
-      console.error('Spot API also failed:', spotError.message)
-      return []
-    }
+    console.error('OKX API error:', error.message)
+    return []
   }
 }
 
@@ -86,9 +106,9 @@ export default async function handler(req, res) {
   try {
     const { symbol = 'BTCUSDT', timeframe = '4h', limit = 500, startTime, endTime, filterStartTime, filterEndTime, candlesOnly } = req.query
     
-    // Если запрашивают только свечи (без стратегии), возвращаем быстро
-    if (candlesOnly === 'true') {
-      const binanceInterval = timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d'
+      // Если запрашивают только свечи (без стратегии), возвращаем быстро
+      if (candlesOnly === 'true') {
+        const okxInterval = timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d'
       
       let candles = []
       try {
@@ -99,15 +119,15 @@ export default async function handler(req, res) {
             console.warn('Invalid time range for candles only request')
             candles = []
           } else {
-            candles = await getFuturesCandles(symbol, binanceInterval, { startTime: startTimeNum, endTime: endTimeNum, limit: parseInt(limit) })
+            candles = await getFuturesCandles(symbol, okxInterval, { startTime: startTimeNum, endTime: endTimeNum, limit: parseInt(limit) })
           }
         } else {
-          candles = await getFuturesCandles(symbol, binanceInterval, { limit: parseInt(limit) })
+          candles = await getFuturesCandles(symbol, okxInterval, { limit: parseInt(limit) })
         }
       } catch (error) {
         // Логируем только если это не ошибка 451 (географические ограничения)
         if (!error.message.includes('451') && !error.message.includes('restricted')) {
-          console.error(`Binance API error (candles only) for ${symbol}:`, error.message)
+          console.error(`OKX API error (candles only) for ${symbol}:`, error.message)
         }
         // Возвращаем пустой результат вместо ошибки, чтобы не ломать загрузку других монет
         return res.status(200).json({
@@ -174,13 +194,13 @@ export default async function handler(req, res) {
       timeframe
     }
 
-    // Конвертация таймфрейма для Binance
-    const binanceInterval = timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d'
+    // Конвертация таймфрейма для OKX
+    const okxInterval = timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d'
 
-    // Получение свечей с Binance
+    // Получение свечей с OKX
     let candles
     try {
-      console.log('Fetching candles from Binance:', { symbol, interval: binanceInterval, limit, startTime, endTime })
+      console.log('Fetching candles from OKX:', { symbol, interval: okxInterval, limit, startTime, endTime })
       
       if (startTime && endTime) {
         const startTimeNum = parseInt(startTime)
@@ -192,38 +212,38 @@ export default async function handler(req, res) {
           candles = []
         } else {
           // Убираем ограничение на старые данные - загружаем всю историю
-          // Binance фьючерсы имеют историю с момента запуска контракта
+          // OKX фьючерсы имеют историю с момента запуска контракта
           try {
-            candles = await getFuturesCandles(symbol, binanceInterval, {
+            candles = await getFuturesCandles(symbol, okxInterval, {
               startTime: startTimeNum,
               endTime: endTimeNum,
               limit: parseInt(limit)
             })
-            console.log(`Binance returned ${candles?.length || 0} candles for range`, {
+            console.log(`OKX returned ${candles?.length || 0} candles for range`, {
               start: new Date(startTimeNum).toISOString(),
               end: new Date(endTimeNum).toISOString()
             })
           } catch (apiError) {
-            console.error('Binance API call failed:', apiError.message)
+            console.error('OKX API call failed:', apiError.message)
             candles = []
           }
         }
       } else {
         // Без временного диапазона - берем последние свечи
         try {
-          candles = await getFuturesCandles(symbol, binanceInterval, {
+          candles = await getFuturesCandles(symbol, okxInterval, {
             limit: parseInt(limit)
           })
-          console.log(`Binance returned ${candles?.length || 0} candles (no time range)`)
+          console.log(`OKX returned ${candles?.length || 0} candles (no time range)`)
         } catch (apiError) {
-          console.error('Binance API call failed (no time range):', apiError.message)
+          console.error('OKX API call failed (no time range):', apiError.message)
           candles = []
         }
       }
       
-      // Логируем только если есть свечи, чтобы не засорять логи при ошибках 451
+      // Логируем только если есть свечи
       if (candles && candles.length > 0) {
-        console.log('Received candles from Binance:', candles.length)
+        console.log('Received candles from OKX:', candles.length)
       }
       
       // Если нет свечей, возвращаем пустой результат вместо ошибки
@@ -231,13 +251,13 @@ export default async function handler(req, res) {
         // Не логируем, так как это может быть из-за географических ограничений
         candles = []
       }
-    } catch (binanceError) {
-      console.error('Binance API error:', binanceError)
+    } catch (okxError) {
+      console.error('OKX API error:', okxError)
       
-      // Для любых ошибок Binance возвращаем пустой результат вместо 500
+      // Для любых ошибок OKX возвращаем пустой результат вместо 500
       // Это позволяет продолжать работу даже если некоторые запросы не удались
-      console.warn('Binance error, returning empty result to continue', {
-        error: binanceError.message || binanceError.toString(),
+      console.warn('OKX error, returning empty result to continue', {
+        error: okxError.message || okxError.toString(),
         symbol,
         startTime,
         endTime
@@ -276,7 +296,7 @@ export default async function handler(req, res) {
       })
     }
 
-    // Преобразование данных Binance в формат для стратегии
+    // Преобразование данных OKX в формат для стратегии
     const formattedCandles = candles.map(candle => ({
       timestamp: candle.openTime,
       open: parseFloat(candle.open),

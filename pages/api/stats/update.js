@@ -38,36 +38,64 @@ const STRATEGY_PARAMS = {
   rsiShortFilter: 50
 }
 
-// Функция для получения свечей (копируем из aggregate.js)
+// Функция для конвертации символа в формат OKX (BTCUSDT -> BTC-USDT-SWAP для фьючерсов)
+function convertSymbolToOKX(symbol) {
+  const base = symbol.replace('USDT', '')
+  return `${base}-USDT-SWAP`
+}
+
+// Функция для конвертации интервала в формат OKX
+function convertIntervalToOKX(interval) {
+  const mapping = {
+    '1m': '1m',
+    '3m': '3m',
+    '5m': '5m',
+    '15m': '15m',
+    '30m': '30m',
+    '1h': '1H',
+    '2h': '2H',
+    '4h': '4H',
+    '6h': '6H',
+    '12h': '12H',
+    '1d': '1D',
+    '1w': '1W',
+    '1M': '1M'
+  }
+  return mapping[interval] || interval.toUpperCase()
+}
+
+// Функция для получения свечей с OKX API
 async function getFuturesCandles(symbol, interval, options = {}) {
   try {
-    const baseUrl = 'https://fapi.binance.com/fapi/v1/klines'
+    const baseUrl = 'https://www.okx.com/api/v5/market/candles'
+    const okxSymbol = convertSymbolToOKX(symbol)
+    const okxInterval = convertIntervalToOKX(interval)
+    
     const queryParams = []
-    queryParams.push(`symbol=${encodeURIComponent(symbol)}`)
-    queryParams.push(`interval=${encodeURIComponent(interval)}`)
-    const limit = Math.min(options.limit || 1000, 1000)
+    queryParams.push(`instId=${encodeURIComponent(okxSymbol)}`)
+    queryParams.push(`bar=${encodeURIComponent(okxInterval)}`)
+    const limit = Math.min(options.limit || 100, 100) // OKX ограничивает до 100
     queryParams.push(`limit=${limit}`)
     
-    if (options.startTime) {
-      queryParams.push(`startTime=${options.startTime}`)
+    if (options.before) {
+      queryParams.push(`before=${options.before}`)
+    }
+    if (options.after) {
+      queryParams.push(`after=${options.after}`)
     }
     if (options.endTime) {
-      queryParams.push(`endTime=${options.endTime}`)
+      queryParams.push(`before=${options.endTime}`)
+    }
+    if (options.startTime) {
+      queryParams.push(`after=${options.startTime}`)
     }
     
     const url = `${baseUrl}?${queryParams.join('&')}`
     
     return new Promise((resolve) => {
       https.get(url, (res) => {
-        // Проверяем статус ответа
-        if (res.statusCode === 451) {
-          console.error(`Binance API restricted (451) for ${symbol}: Service unavailable from restricted location`)
-          resolve([])
-          return
-        }
-        
         if (res.statusCode !== 200) {
-          console.error(`Binance API error for ${symbol}: ${res.statusCode} ${res.statusMessage}`)
+          console.error(`OKX API error for ${symbol}: ${res.statusCode} ${res.statusMessage}`)
           resolve([])
           return
         }
@@ -76,21 +104,28 @@ async function getFuturesCandles(symbol, interval, options = {}) {
         res.on('data', (chunk) => { data += chunk })
         res.on('end', () => {
           try {
-            const klines = JSON.parse(data)
-            if (Array.isArray(klines) && klines.length > 0 && Array.isArray(klines[0])) {
-              const formatted = klines.map(k => ({
-                openTime: k[0],
-                open: k[1],
-                high: k[2],
-                low: k[3],
-                close: k[4],
-                volume: k[5],
-                closeTime: k[6],
-                quoteVolume: k[7],
-                trades: k[8],
-                takerBuyBaseVolume: k[9],
-                takerBuyQuoteVolume: k[10]
-              }))
+            const result = JSON.parse(data)
+            if (result.code !== '0') {
+              console.error(`OKX API error for ${symbol}: ${result.msg || 'Unknown error'}`)
+              resolve([])
+              return
+            }
+            
+            if (Array.isArray(result.data) && result.data.length > 0) {
+              // OKX формат: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+              const formatted = result.data.map(k => ({
+                openTime: parseInt(k[0]),
+                open: parseFloat(k[1]),
+                high: parseFloat(k[2]),
+                low: parseFloat(k[3]),
+                close: parseFloat(k[4]),
+                volume: parseFloat(k[5]),
+                closeTime: parseInt(k[0]) + (interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000) - 1,
+                quoteVolume: parseFloat(k[6]),
+                trades: 0,
+                takerBuyBaseVolume: 0,
+                takerBuyQuoteVolume: 0
+              })).reverse() // OKX возвращает в обратном порядке
               resolve(formatted)
             } else {
               resolve([])
@@ -106,7 +141,7 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       })
     })
   } catch (error) {
-    console.error(`Futures API error for ${symbol}:`, error.message)
+    console.error(`OKX API error for ${symbol}:`, error.message)
     return []
   }
 }
