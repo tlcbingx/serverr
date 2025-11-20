@@ -38,56 +38,44 @@ const STRATEGY_PARAMS = {
   rsiShortFilter: 50
 }
 
-// Функция для конвертации символа в формат OKX (BTCUSDT -> BTC-USDT-SWAP для фьючерсов)
-function convertSymbolToOKX(symbol) {
-  const base = symbol.replace('USDT', '')
-  return `${base}-USDT-SWAP`
-}
-
-// Функция для конвертации интервала в формат OKX
-function convertIntervalToOKX(interval) {
+// Функция для конвертации интервала в формат Bybit
+function convertIntervalToBybit(interval) {
   const mapping = {
-    '1m': '1m',
-    '3m': '3m',
-    '5m': '5m',
-    '15m': '15m',
-    '30m': '30m',
-    '1h': '1H',
-    '2h': '2H',
-    '4h': '4H',
-    '6h': '6H',
-    '12h': '12H',
-    '1d': '1D',
-    '1w': '1W',
-    '1M': '1M'
+    '1m': '1',
+    '3m': '3',
+    '5m': '5',
+    '15m': '15',
+    '30m': '30',
+    '1h': '60',
+    '2h': '120',
+    '4h': '240',
+    '6h': '360',
+    '12h': '720',
+    '1d': 'D',
+    '1w': 'W',
+    '1M': 'M'
   }
-  return mapping[interval] || interval.toUpperCase()
+  return mapping[interval] || interval
 }
 
-// Функция для получения свечей с OKX API
+// Функция для получения свечей с Bybit API
 async function getFuturesCandles(symbol, interval, options = {}) {
   try {
-    const baseUrl = 'https://www.okx.com/api/v5/market/candles'
-    const okxSymbol = convertSymbolToOKX(symbol)
-    const okxInterval = convertIntervalToOKX(interval)
+    const baseUrl = 'https://api.bybit.com/v5/market/kline'
+    const bybitInterval = convertIntervalToBybit(interval)
     
     const queryParams = []
-    queryParams.push(`instId=${encodeURIComponent(okxSymbol)}`)
-    queryParams.push(`bar=${encodeURIComponent(okxInterval)}`)
-    const limit = Math.min(options.limit || 100, 100) // OKX ограничивает до 100
+    queryParams.push(`category=linear`)
+    queryParams.push(`symbol=${encodeURIComponent(symbol)}`)
+    queryParams.push(`interval=${encodeURIComponent(bybitInterval)}`)
+    const limit = Math.min(options.limit || 200, 200) // Bybit ограничивает до 200
     queryParams.push(`limit=${limit}`)
     
-    if (options.before) {
-      queryParams.push(`before=${options.before}`)
-    }
-    if (options.after) {
-      queryParams.push(`after=${options.after}`)
+    if (options.startTime) {
+      queryParams.push(`start=${options.startTime}`)
     }
     if (options.endTime) {
-      queryParams.push(`before=${options.endTime}`)
-    }
-    if (options.startTime) {
-      queryParams.push(`after=${options.startTime}`)
+      queryParams.push(`end=${options.endTime}`)
     }
     
     const url = `${baseUrl}?${queryParams.join('&')}`
@@ -95,7 +83,7 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     return new Promise((resolve) => {
       https.get(url, (res) => {
         if (res.statusCode !== 200) {
-          console.error(`OKX API error for ${symbol}: ${res.statusCode} ${res.statusMessage}`)
+          console.error(`Bybit API error for ${symbol}: ${res.statusCode} ${res.statusMessage}`)
           resolve([])
           return
         }
@@ -105,27 +93,28 @@ async function getFuturesCandles(symbol, interval, options = {}) {
         res.on('end', () => {
           try {
             const result = JSON.parse(data)
-            if (result.code !== '0') {
-              console.error(`OKX API error for ${symbol}: ${result.msg || 'Unknown error'}`)
+            if (result.retCode !== 0) {
+              console.error(`Bybit API error for ${symbol}: ${result.retMsg || 'Unknown error'}`)
               resolve([])
               return
             }
             
-            if (Array.isArray(result.data) && result.data.length > 0) {
-              // OKX формат: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
-              const formatted = result.data.map(k => ({
+            if (result.result && Array.isArray(result.result.list) && result.result.list.length > 0) {
+              // Bybit формат: [startTime, open, high, low, close, volume, turnover]
+              const intervalMs = interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000
+              const formatted = result.result.list.map(k => ({
                 openTime: parseInt(k[0]),
                 open: parseFloat(k[1]),
                 high: parseFloat(k[2]),
                 low: parseFloat(k[3]),
                 close: parseFloat(k[4]),
                 volume: parseFloat(k[5]),
-                closeTime: parseInt(k[0]) + (interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000) - 1,
+                closeTime: parseInt(k[0]) + intervalMs - 1,
                 quoteVolume: parseFloat(k[6]),
                 trades: 0,
                 takerBuyBaseVolume: 0,
                 takerBuyQuoteVolume: 0
-              })).reverse() // OKX возвращает в обратном порядке
+              }))
               resolve(formatted)
             } else {
               resolve([])
@@ -141,7 +130,7 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       })
     })
   } catch (error) {
-    console.error(`OKX API error for ${symbol}:`, error.message)
+    console.error(`Bybit API error for ${symbol}:`, error.message)
     return []
   }
 }

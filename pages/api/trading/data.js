@@ -1,123 +1,140 @@
-// API для получения данных с OKX и расчета стратегии
+// API для получения данных с Bybit и расчета стратегии
 const TradingStrategy = require('../../../lib/trading-strategy')
 
-// Функция для конвертации символа в формат OKX (BTCUSDT -> BTC-USDT-SWAP для фьючерсов)
-function convertSymbolToOKX(symbol) {
-  // Убираем USDT и добавляем -USDT-SWAP для фьючерсов
-  const base = symbol.replace('USDT', '')
-  const okxSymbol = `${base}-USDT-SWAP`
-  console.log(`[OKX] Converting symbol: ${symbol} -> ${okxSymbol}`)
-  return okxSymbol
-}
-
-// Функция для конвертации интервала в формат OKX
-function convertIntervalToOKX(interval) {
+// Функция для конвертации интервала в формат Bybit
+function convertIntervalToBybit(interval) {
   const mapping = {
-    '1m': '1m',
-    '3m': '3m',
-    '5m': '5m',
-    '15m': '15m',
-    '30m': '30m',
-    '1h': '1H',
-    '2h': '2H',
-    '4h': '4H',
-    '6h': '6H',
-    '12h': '12H',
-    '1d': '1D',
-    '1w': '1W',
-    '1M': '1M'
+    '1m': '1',
+    '3m': '3',
+    '5m': '5',
+    '15m': '15',
+    '30m': '30',
+    '1h': '60',
+    '2h': '120',
+    '4h': '240',
+    '6h': '360',
+    '12h': '720',
+    '1d': 'D',
+    '1w': 'W',
+    '1M': 'M'
   }
-  return mapping[interval] || interval.toUpperCase()
+  return mapping[interval] || interval
 }
 
-// Функция для получения свечей с OKX API
+// Функция для получения свечей с Bybit API
 async function getFuturesCandles(symbol, interval, options = {}) {
   try {
-    // Используем OKX API v5 для фьючерсов
-    // API endpoint: https://www.okx.com/api/v5/market/candles
-    const baseUrl = 'https://www.okx.com/api/v5/market/candles'
-    const okxSymbol = convertSymbolToOKX(symbol)
-    const okxInterval = convertIntervalToOKX(interval)
+    // Используем Bybit API v5 для фьючерсов
+    // API endpoint: https://api.bybit.com/v5/market/kline
+    const baseUrl = 'https://api.bybit.com/v5/market/kline'
+    const bybitInterval = convertIntervalToBybit(interval)
     
-    const params = new URLSearchParams({
-      instId: okxSymbol,
-      bar: okxInterval,
-      limit: Math.min(options.limit || 100, 100) // OKX ограничивает до 100
-    })
+    // Bybit API ограничивает limit до 200
+    const maxLimit = 200
+    let allCandles = []
+    let endTime = options.endTime ? parseInt(options.endTime) : null
+    let attempts = 0
+    const maxAttempts = options.startTime ? 10 : 1
     
-    // OKX использует before/after для пагинации, но для временного диапазона лучше использовать отдельные параметры
-    // before - получить данные до этого времени (в миллисекундах)
-    // after - получить данные после этого времени (в миллисекундах)
-    if (options.endTime) {
-      params.append('before', options.endTime)
-    }
-    if (options.startTime) {
-      params.append('after', options.startTime)
-    }
-    
-    const url = `${baseUrl}?${params.toString()}`
-    
-    console.log(`[OKX] Requesting candles: ${okxSymbol} ${okxInterval}`, {
-      url,
-      startTime: options.startTime ? new Date(parseInt(options.startTime)).toISOString() : 'none',
-      endTime: options.endTime ? new Date(parseInt(options.endTime)).toISOString() : 'none',
-      limit: params.get('limit')
-    })
-    
-    const response = await fetch(url)
-    
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => response.statusText)
-      console.error(`[OKX] HTTP error ${response.status}:`, errorText)
-      throw new Error(`OKX API error: ${response.status} ${errorText}`)
-    }
-    
-    const result = await response.json()
-    
-    // OKX возвращает { code, msg, data }
-    if (result.code !== '0') {
-      console.error(`[OKX] API error code ${result.code}:`, result.msg)
-      throw new Error(`OKX API error: ${result.msg || 'Unknown error'}`)
-    }
-    
-    if (!Array.isArray(result.data)) {
-      console.warn(`[OKX] No data array in response for ${okxSymbol}`)
-      return []
-    }
-    
-    if (result.data.length === 0) {
-      console.warn(`[OKX] Empty data array for ${okxSymbol}`)
-      return []
-    }
-    
-    console.log(`[OKX] Received ${result.data.length} candles for ${okxSymbol}`)
-    
-    // Конвертируем формат OKX в формат библиотеки
-    // OKX формат: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
-    const formatted = result.data.map(k => {
-      const timestamp = parseInt(k[0])
-      const intervalMs = interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000
+    while (attempts < maxAttempts) {
+      const params = new URLSearchParams({
+        category: 'linear', // USDT фьючерсы
+        symbol: symbol,
+        interval: bybitInterval,
+        limit: maxLimit.toString()
+      })
       
-      return {
-        openTime: timestamp,
-        open: parseFloat(k[1]),
-        high: parseFloat(k[2]),
-        low: parseFloat(k[3]),
-        close: parseFloat(k[4]),
-        volume: parseFloat(k[5]),
-        closeTime: timestamp + intervalMs - 1,
-        quoteVolume: parseFloat(k[6]),
-        trades: 0,
-        takerBuyBaseVolume: 0,
-        takerBuyQuoteVolume: 0
+      // Bybit использует start и end для временного диапазона (в миллисекундах)
+      if (endTime) {
+        params.append('end', endTime.toString())
       }
-    }).reverse() // OKX возвращает в обратном порядке (новые первыми)
+      if (options.startTime) {
+        params.append('start', options.startTime.toString())
+      }
+      
+      const url = `${baseUrl}?${params.toString()}`
+      
+      const response = await fetch(url)
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => response.statusText)
+        console.error(`[Bybit] HTTP error ${response.status}:`, errorText)
+        break
+      }
+      
+      const result = await response.json()
+      
+      // Bybit возвращает { retCode, retMsg, result: { list: [...] } }
+      if (result.retCode !== 0) {
+        console.error(`[Bybit] API error code ${result.retCode}:`, result.retMsg)
+        break
+      }
+      
+      if (!result.result || !Array.isArray(result.result.list) || result.result.list.length === 0) {
+        break
+      }
+      
+      // Конвертируем формат Bybit в формат библиотеки
+      // Bybit формат: [startTime, open, high, low, close, volume, turnover]
+      const intervalMs = interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000
+      const batch = result.result.list.map(k => {
+        const timestamp = parseInt(k[0])
+        return {
+          openTime: timestamp,
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4]),
+          volume: parseFloat(k[5]),
+          closeTime: timestamp + intervalMs - 1,
+          quoteVolume: parseFloat(k[6]),
+          trades: 0,
+          takerBuyBaseVolume: 0,
+          takerBuyQuoteVolume: 0
+        }
+      })
+      
+      allCandles = [...allCandles, ...batch]
+      
+      // Если есть startTime и самая старая свеча еще не достигнута, продолжаем
+      if (options.startTime && batch.length === maxLimit) {
+        const oldestTimestamp = Math.min(...batch.map(c => c.openTime))
+        if (oldestTimestamp > parseInt(options.startTime)) {
+          endTime = oldestTimestamp - 1
+          attempts++
+          // Небольшая задержка между пагинационными запросами
+          await new Promise(resolve => setTimeout(resolve, 100))
+          continue
+        }
+      }
+      
+      break
+    }
     
-    return formatted
+    // Фильтруем по временному диапазону если указан
+    if (options.startTime || options.endTime) {
+      const startTime = options.startTime ? parseInt(options.startTime) : 0
+      const endTimeFilter = options.endTime ? parseInt(options.endTime) : Date.now()
+      
+      allCandles = allCandles.filter(c => {
+        return c.openTime >= startTime && c.openTime <= endTimeFilter
+      })
+    }
+    
+    // Сортируем по времени (старые первыми) и ограничиваем лимитом
+    allCandles.sort((a, b) => a.openTime - b.openTime)
+    
+    if (options.limit && allCandles.length > options.limit) {
+      allCandles = allCandles.slice(-options.limit) // Берем последние N свечей
+    }
+    
+    console.log(`[Bybit] Received ${allCandles.length} candles for ${symbol} (after filtering)`)
+    
+    return allCandles
   } catch (error) {
-    console.error(`[OKX] Error for ${symbol}:`, error.message)
+    console.error(`[Bybit] Error for ${symbol}:`, error.message)
     if (error.stack) {
-      console.error(`[OKX] Stack:`, error.stack)
+      console.error(`[Bybit] Stack:`, error.stack)
     }
     return []
   }
@@ -133,7 +150,7 @@ export default async function handler(req, res) {
     
       // Если запрашивают только свечи (без стратегии), возвращаем быстро
       if (candlesOnly === 'true') {
-        const okxInterval = timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d'
+        const bybitInterval = timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d'
       
       let candles = []
       try {
@@ -144,16 +161,13 @@ export default async function handler(req, res) {
             console.warn('Invalid time range for candles only request')
             candles = []
           } else {
-            candles = await getFuturesCandles(symbol, okxInterval, { startTime: startTimeNum, endTime: endTimeNum, limit: parseInt(limit) })
+            candles = await getFuturesCandles(symbol, bybitInterval, { startTime: startTimeNum, endTime: endTimeNum, limit: parseInt(limit) })
           }
         } else {
-          candles = await getFuturesCandles(symbol, okxInterval, { limit: parseInt(limit) })
+          candles = await getFuturesCandles(symbol, bybitInterval, { limit: parseInt(limit) })
         }
       } catch (error) {
-        // Логируем только если это не ошибка 451 (географические ограничения)
-        if (!error.message.includes('451') && !error.message.includes('restricted')) {
-          console.error(`OKX API error (candles only) for ${symbol}:`, error.message)
-        }
+        console.error(`Bybit API error (candles only) for ${symbol}:`, error.message)
         // Возвращаем пустой результат вместо ошибки, чтобы не ломать загрузку других монет
         return res.status(200).json({
           success: false,
@@ -219,13 +233,13 @@ export default async function handler(req, res) {
       timeframe
     }
 
-    // Конвертация таймфрейма для OKX
-    const okxInterval = timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d'
+    // Конвертация таймфрейма для Bybit
+    const bybitInterval = timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d'
 
-    // Получение свечей с OKX
+    // Получение свечей с Bybit
     let candles
     try {
-      console.log('Fetching candles from OKX:', { symbol, interval: okxInterval, limit, startTime, endTime })
+      console.log('Fetching candles from Bybit:', { symbol, interval: bybitInterval, limit, startTime, endTime })
       
       if (startTime && endTime) {
         const startTimeNum = parseInt(startTime)
@@ -237,50 +251,50 @@ export default async function handler(req, res) {
           candles = []
         } else {
           // Убираем ограничение на старые данные - загружаем всю историю
-          // OKX фьючерсы имеют историю с момента запуска контракта
+          // Bybit фьючерсы имеют историю с момента запуска контракта
           try {
-            candles = await getFuturesCandles(symbol, okxInterval, {
+            candles = await getFuturesCandles(symbol, bybitInterval, {
               startTime: startTimeNum,
               endTime: endTimeNum,
               limit: parseInt(limit)
             })
-            console.log(`OKX returned ${candles?.length || 0} candles for range`, {
+            console.log(`Bybit returned ${candles?.length || 0} candles for range`, {
               start: new Date(startTimeNum).toISOString(),
               end: new Date(endTimeNum).toISOString()
             })
           } catch (apiError) {
-            console.error('OKX API call failed:', apiError.message)
+            console.error('Bybit API call failed:', apiError.message)
             candles = []
           }
         }
       } else {
         // Без временного диапазона - берем последние свечи
         try {
-          candles = await getFuturesCandles(symbol, okxInterval, {
+          candles = await getFuturesCandles(symbol, bybitInterval, {
             limit: parseInt(limit)
           })
-          console.log(`OKX returned ${candles?.length || 0} candles (no time range)`)
+          console.log(`Bybit returned ${candles?.length || 0} candles (no time range)`)
         } catch (apiError) {
-          console.error('OKX API call failed (no time range):', apiError.message)
+          console.error('Bybit API call failed (no time range):', apiError.message)
           candles = []
         }
       }
       
       // Логируем результат получения свечей
       if (candles && candles.length > 0) {
-        console.log(`[OKX] Successfully received ${candles.length} candles for ${symbol}`)
-        console.log(`[OKX] First candle:`, {
+        console.log(`[Bybit] Successfully received ${candles.length} candles for ${symbol}`)
+        console.log(`[Bybit] First candle:`, {
           time: new Date(candles[0].openTime).toISOString(),
           open: candles[0].open,
           close: candles[0].close
         })
-        console.log(`[OKX] Last candle:`, {
+        console.log(`[Bybit] Last candle:`, {
           time: new Date(candles[candles.length - 1].openTime).toISOString(),
           open: candles[candles.length - 1].open,
           close: candles[candles.length - 1].close
         })
       } else {
-        console.warn(`[OKX] No candles received for ${symbol}`)
+        console.warn(`[Bybit] No candles received for ${symbol}`)
         candles = []
       }
     } catch (okxError) {
@@ -328,7 +342,7 @@ export default async function handler(req, res) {
       })
     }
 
-    // Преобразование данных OKX в формат для стратегии
+    // Преобразование данных Bybit в формат для стратегии
     const formattedCandles = candles.map(candle => ({
       timestamp: candle.openTime,
       open: parseFloat(candle.open),
