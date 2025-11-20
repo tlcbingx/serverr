@@ -54,11 +54,23 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       
       const url = `${baseUrl}?${params.toString()}`
       
-      const response = await fetch(url)
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/json'
+        }
+      })
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => response.statusText)
-        console.error(`[Bybit] HTTP error ${response.status}:`, errorText)
+        
+        // Если это 403 (блокировка по стране), возвращаем пустой массив без ошибки
+        if (response.status === 403 || errorText.includes('CloudFront') || errorText.includes('block access from your country')) {
+          console.warn(`[Bybit] Access blocked (403) for ${symbol} - geographic restriction`)
+          return [] // Возвращаем пустой массив вместо ошибки
+        }
+        
+        console.error(`[Bybit] HTTP error ${response.status}:`, errorText.substring(0, 200))
         break
       }
       

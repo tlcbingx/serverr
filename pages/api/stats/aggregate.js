@@ -84,6 +84,12 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     return new Promise((resolve) => {
       https.get(url, (res) => {
         if (res.statusCode !== 200) {
+          // Если это 403 (блокировка по стране), возвращаем пустой массив без ошибки
+          if (res.statusCode === 403) {
+            console.warn(`[${symbol}] Bybit access blocked (403) - geographic restriction`)
+            resolve([])
+            return
+          }
           console.error(`[${symbol}] Bybit API error: ${res.statusCode} ${res.statusMessage}`)
           resolve([])
           return
@@ -92,6 +98,12 @@ async function getFuturesCandles(symbol, interval, options = {}) {
         let data = ''
         res.on('data', (chunk) => { data += chunk })
         res.on('end', () => {
+          // Проверяем на CloudFront блокировку в ответе
+          if (data.includes('CloudFront') || data.includes('block access from your country')) {
+            console.warn(`[${symbol}] Bybit access blocked (CloudFront) - geographic restriction`)
+            resolve([])
+            return
+          }
           try {
             const result = JSON.parse(data)
             if (result.retCode !== 0) {
