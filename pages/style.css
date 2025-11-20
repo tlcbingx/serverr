@@ -2769,10 +2769,14 @@
       var(--animation-curve-primary) both;
   background: var(--color-surface-elevated);
   box-shadow: var(--shadow-level-1);
-  transition: transform var(--animation-duration-standard)
-        var(--animation-curve-primary),
-      opacity var(--animation-duration-standard) var(--animation-curve-primary);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity var(--animation-duration-standard) var(--animation-curve-primary);
   border-radius: var(--border-radius-md);
+  position: relative;
+  cursor: pointer;
+  border: 1px solid transparent;
 }
  
 .testimonial-card--featured {
@@ -3276,9 +3280,18 @@
 .testimonial-card:nth-child(3) {
   animation-delay: 0.3s;
 }
- 
+
 .testimonial-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(155, 255, 0, 0.25),
+              0 0 0 1px rgba(155, 255, 0, 0.2);
+  border-color: rgba(155, 255, 0, 0.3);
+}
+
+.testimonial-card--featured:hover {
+  box-shadow: 0 16px 48px rgba(155, 255, 0, 0.3),
+              0 0 0 1px rgba(155, 255, 0, 0.3);
+  border-color: rgba(155, 255, 0, 0.4);
 }
  
 .testimonial-card__quote  p {

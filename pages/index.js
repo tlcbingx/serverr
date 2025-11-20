@@ -1,10 +1,101 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import Head from 'next/head'
 import Script from 'next/script'
 import Navigation from '../components/navigation'
 import Footer from '../components/footer'
 
+// Массив отзывов с отзовника (otzovik.com)
+// Обновите ссылки на конкретные отзывы, если они доступны
+// Формат ссылки на отзыв: https://otzovik.com/reviews/vextr_ru-telegram-bot_dlya_upravleniya_strategiey-[review-id]/
+const testimonials = [
+  {
+    id: 1,
+    author: '',
+    text: 'Классный рабочий бот. В тг группе Vextr примерно два года. У них есть вип группа и Бот, который соблюдает все риски, почти все сделки отрабатывает в плюс. Хороший рост капитала. Очень хороший показатель по %. Советую всем.',
+    pros: 'Хорошо отрабатывает сделки, почти все сделки в хорошей прибыли. Правильное соблюдение рисков.',
+    cons: 'Пока не заметил никаких минусов.',
+    link: 'https://otzovik.com/review_17846568.html',
+    featured: true
+  },
+  {
+    id: 2,
+    author: '',
+    text: 'Удобный сервис, который реально помогает не сливать депозит. Пользуюсь Vextr около месяца. Подключение заняло пару минут, просто ввёл API-ключ с биржи и выбрал стратегию. Понравилось, что бот торгует аккуратно и не лезет в каждое движение. За это время несколько раз спас от неудачных сделок.',
+    pros: 'Простое подключение, аккуратная торговля, понятная статистика, стабильный результат без лишних рисков.',
+    cons: 'Пока мало поддерживаемых бирж, хотелось бы больше настроек для продвинутых пользователей',
+    link: 'https://otzovik.com/review_17846363.html',
+    featured: false
+  },
+  {
+    id: 3,
+    author: '',
+    text: 'Помогает не переживать за рынок. Пользуюсь VEXTR около двух месяцев. Я в трейдинге не супер-профи, поэтому мне понравилось, что бот не требует настроек — просто подключила API и забыла. За это время ни одной паники, никаких «ой, что делать, всё падает».',
+    pros: 'Спокойно ведёт сделки, не нужно следить весь день.',
+    cons: 'Хотелось бы больше бирж в поддержке',
+    link: 'https://otzovik.com/review_17854058.html',
+    featured: false
+  }
+]
+
+// Функция для разделения текста на первое предложение и остальное
+const splitTextIntoFirstSentence = (text) => {
+  // Ищем первое предложение (до точки, восклицательного или вопросительного знака)
+  const match = text.match(/^([^.!?]+[.!?])/);
+  if (match) {
+    const firstSentence = match[1];
+    const rest = text.substring(match[0].length).trim();
+    return { firstSentence, rest };
+  }
+  // Если не найдено, возвращаем весь текст как первое предложение
+  return { firstSentence: text, rest: '' };
+}
+
 const Home = (props) => {
+  const [stats, setStats] = useState({
+    yearPnlPercent: 126.7,
+    monthPnlPercent: 12.6,
+    activeCoins: 11
+  })
+  const [loading, setLoading] = useState(true)
+
+  // Загрузка статистики
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await fetch('/api/stats/aggregate')
+        const data = await response.json()
+        
+        if (data.success && data.data) {
+          setStats({
+            yearPnlPercent: parseFloat(data.data.yearPnlPercent) || 0,
+            monthPnlPercent: parseFloat(data.data.monthPnlPercent) || 0,
+            activeCoins: data.data.activeCoins || 11
+          })
+        }
+      } catch (error) {
+        console.error('Error fetching stats:', error)
+        // Оставляем значения по умолчанию при ошибке
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    // Загружаем статистику при монтировании
+    fetchStats()
+
+    // Обновляем статистику каждые 24 часа (86400000 мс)
+    const interval = setInterval(fetchStats, 86400000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  // Форматирование процентов с знаком +
+  const formatPercent = (value) => {
+    const num = typeof value === 'number' ? value : parseFloat(value)
+    if (isNaN(num)) return '+0.0'
+    return num >= 0 ? `+${num.toFixed(1)}` : num.toFixed(1)
+  }
+
   return (
     <>
       <div className="home-container1">
@@ -424,7 +515,7 @@ const Home = (props) => {
                       </svg>
                       <div className="metric-bg">
                         <h3 id="roi-title" className="performance-card__value">
-                          +126.7%
+                          {loading ? '...' : `${formatPercent(stats.yearPnlPercent)}%`}
                         </h3>
                         <p className="performance-card__label">
                           Общая доходность 2025
@@ -477,7 +568,7 @@ const Home = (props) => {
                           className="performance-card__value"
                         >
                           {' '}
-                          +12.6%
+                          {loading ? '...' : `${formatPercent(stats.monthPnlPercent)}%`}
                           <span
                             dangerouslySetInnerHTML={{
                               __html: ' ',
@@ -529,7 +620,7 @@ const Home = (props) => {
                           id="coins-title"
                           className="performance-card__value"
                         >
-                          11
+                          {loading ? '...' : stats.activeCoins}
                         </h3>
                         <p className="performance-card__label">
                           Активных монет
@@ -977,59 +1068,78 @@ const Home = (props) => {
                 </a>
               </header>
               <div className="community__testimonials">
-                <article
-                  aria-label="Отзыв от Алексей"
-                  className="testimonial-card--featured testimonial-card"
-                >
-                  <blockquote className="testimonial-card__quote">
-                    Пользуюсь месяц, пока не разбогател, но отзыв положительный.
-                    При строгом следовании идет постепенный рост. Откаты бывают,
-                    но тенденция положительная. На данный момент палец вверх 👍
-                  </blockquote>
-                  <footer className="testimonial-card__author">
-                    <cite>Андрей</cite>
-                    <span className="testimonial-card__meta">трейдер</span>
-                    <time className="testimonial-card__date" dateTime="2025-06-17">17 июня 2025</time>
-                  </footer>
-                </article>
-                <article
-                  aria-label="Отзыв от Марина"
-                  className="testimonial-card"
-                >
-                  <blockquote className="testimonial-card__quote">
-                    <span>
-                      Бот отлично выполняет свою работу, нужна вещь для тех, у
-                      кого не хватает времени сидеть и мониторить свои открытые
-                      позиции
-                    </span>
-                    <br></br>
-                    <span>
-                      Удобное и быстрое подключение, качественная поддержка
-                    </span>
-                  </blockquote>
-                  <footer className="testimonial-card__author">
-                    <cite>Виктор</cite>
-                    <span className="testimonial-card__meta">трейдер</span>
-                    <time className="testimonial-card__date" dateTime="2025-10-15">15 октября 2025</time>
-                  </footer>
-                </article>
-                <article
-                  aria-label="Отзыв от Дмитрий"
-                  className="testimonial-card"
-                >
-                  <blockquote className="testimonial-card__quote">
-                    Раньше я пытался торговать сам, но без опыта это было сложно
-                    - часто пропускал хорошие моменты и терял деньги. После того
-                    как начал использовать бота, все стало гораздо проще. Теперь
-                    система сама находит подходящие моменты для сделок и следит
-                    за ними вместо меня <a className="link-telegram" href="https://t.me/otzivstrategyvextr/6" target="_blank" rel="noopener noreferrer">читать полностью</a>
-                  </blockquote>
-                  <footer className="testimonial-card__author">
-                    <cite>Дмитрий</cite>
-                    <span className="testimonial-card__meta">трейдер</span>
-                    <time className="testimonial-card__date" dateTime="2025-06-19">19 июня 2025</time>
-                  </footer>
-                </article>
+                {testimonials.map((testimonial) => (
+                  <a
+                    key={testimonial.id}
+                    href={testimonial.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+                    className={testimonial.featured ? 'testimonial-card--featured testimonial-card' : 'testimonial-card'}
+                    aria-label={`Отзыв от ${testimonial.author}`}
+                  >
+                    <article
+                      style={{ 
+                        height: '100%',
+                        position: 'relative',
+                        paddingBottom: '28px'
+                      }}
+                    >
+                      <blockquote className="testimonial-card__quote" style={{ fontSize: '0.9rem' }}>
+                        {(() => {
+                          const { firstSentence, rest } = splitTextIntoFirstSentence(testimonial.text);
+                          return (
+                            <p style={{ fontSize: '0.9rem' }}>
+                              <strong>{firstSentence}</strong>
+                              {rest && (
+                                <>
+                                  <br />
+                                  {rest}
+                                </>
+                              )}
+                            </p>
+                          );
+                        })()}
+                        {testimonial.pros && (
+                          <>
+                            <br />
+                            <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+                              <strong>{testimonial.pros}</strong>
+                            </p>
+                          </>
+                        )}
+                        {testimonial.cons && (
+                          <>
+                            <br />
+                            <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+                              <strong>{testimonial.cons}</strong>
+                            </p>
+                          </>
+                        )}
+                      </blockquote>
+                      <footer className="testimonial-card__author">
+                        {testimonial.author && <cite>{testimonial.author}</cite>}
+                      </footer>
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '4px',
+                        right: '4px',
+                        fontSize: '12px',
+                        color: 'rgba(155, 255, 0, 0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        pointerEvents: 'none',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        <span>Читать на Отзовик</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M7 17L17 7M7 7h10v10" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                    </article>
+                  </a>
+                ))}
               </div>
               <div className="community__trust-bar">
                 <svg
