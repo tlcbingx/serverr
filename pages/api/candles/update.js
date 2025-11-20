@@ -149,9 +149,9 @@ async function getFuturesCandles(symbol, interval, options = {}) {
 }
 
 export default async function handler(req, res) {
-  // Проверяем секретный ключ для безопасности
+  // Проверяем секретный ключ для безопасности (отдельный ключ для обновления свечей)
   const secretKey = req.headers['x-cron-secret'] || req.query.secret
-  const expectedSecret = process.env.CRON_SECRET_KEY || 'your-secret-key-here'
+  const expectedSecret = process.env.CANDLES_UPDATE_SECRET || process.env.CRON_SECRET_KEY || 'your-secret-key-here'
   
   if (secretKey !== expectedSecret) {
     return res.status(401).json({ error: 'Unauthorized' })
