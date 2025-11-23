@@ -59,32 +59,34 @@ const Home = (props) => {
   const [loading, setLoading] = useState(true)
 
   // Загрузка статистики
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const response = await fetch('/api/stats/aggregate')
-        const data = await response.json()
-        
-        if (data.success && data.data) {
-          setStats({
-            yearPnlPercent: parseFloat(data.data.yearPnlPercent) || 0,
-            monthPnlPercent: parseFloat(data.data.monthPnlPercent) || 0,
-            activeCoins: data.data.activeCoins || 11
-          })
-        }
-      } catch (error) {
-        console.error('Error fetching stats:', error)
-        // Оставляем значения по умолчанию при ошибке
-      } finally {
-        setLoading(false)
+  const fetchStats = async (force = false) => {
+    try {
+      setLoading(true)
+      const url = force ? '/api/stats/aggregate?force=true' : '/api/stats/aggregate'
+      const response = await fetch(url)
+      const data = await response.json()
+      
+      if (data.success && data.data) {
+        setStats({
+          yearPnlPercent: parseFloat(data.data.yearPnlPercent) || 0,
+          monthPnlPercent: parseFloat(data.data.monthPnlPercent) || 0,
+          activeCoins: data.data.activeCoins || 11
+        })
       }
+    } catch (error) {
+      console.error('Error fetching stats:', error)
+      // Оставляем значения по умолчанию при ошибке
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     // Загружаем статистику при монтировании
     fetchStats()
 
     // Обновляем статистику каждые 24 часа (86400000 мс)
-    const interval = setInterval(fetchStats, 86400000)
+    const interval = setInterval(() => fetchStats(false), 86400000)
 
     return () => clearInterval(interval)
   }, [])

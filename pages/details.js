@@ -664,8 +664,8 @@ const Details = () => {
 
   const periods = [
     { value: '30', label: 'За 30 дней' },
-    { value: '90', label: 'За 3 месяца' },
-    { value: '365', label: 'За год' },
+    { value: '90', label: 'За 90 дней' },
+    { value: '365', label: 'За 365 дней' },
     { value: 'all', label: 'За все время' }
   ]
 
@@ -2404,14 +2404,17 @@ const Details = () => {
                             const isLong = trade.type === 'long'
                             const pnlUsdt = trade.result || 0
                             
-                            // Рассчитываем P&L в процентах
-                            // P&L % показывает процент изменения цены, независимо от размера закрываемой части
+                            // Используем P&L в процентах из стратегии (уже правильно рассчитан с учетом комиссий)
+                            // Если pnl не указан, рассчитываем вручную (fallback)
                             let pnlPercent = 0
                             if (trade.exitType === 'ENTRY') {
                               // Это запись о входе - нет P&L
                               pnlPercent = 0
+                            } else if (trade.pnl !== null && trade.pnl !== undefined) {
+                              // Используем процент из стратегии (уже правильно рассчитан)
+                              pnlPercent = trade.pnl
                             } else if (entryPrice > 0) {
-                              // Рассчитываем процент от цены
+                              // Fallback: рассчитываем процент от цены, если нет данных из стратегии
                               const pricePnlPercent = isLong 
                                 ? ((exitPrice - entryPrice) / entryPrice * 100)
                                 : ((entryPrice - exitPrice) / entryPrice * 100)

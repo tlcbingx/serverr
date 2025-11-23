@@ -75,7 +75,9 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     const queryParams = []
     queryParams.push(`symbol=${encodeURIComponent(kucoinSymbol)}`)
     queryParams.push(`type=${encodeURIComponent(kucoinInterval)}`)
-    const limit = Math.min(options.limit || 200, 200) // KuCoin ограничивает до 200
+    // KuCoin ограничивает до 200 свечей за запрос для spot, но для futures может быть другой лимит
+    // Используем максимум 200 для надежности
+    const limit = Math.min(options.limit || 200, 200)
     queryParams.push(`limit=${limit}`)
     
     if (options.startTime) {
@@ -186,15 +188,19 @@ async function getCoinStats(symbol, timeframe) {
     // Для 4h: ~2190 свечей за год, но достаточно 2-3 запросов (2000-3000 свечей)
     // Для 1h: ~8760 свечей за год, но достаточно 3-4 запросов (3000-4000 свечей)
     const hoursPerCandle = timeframe === '1h' ? 1 : timeframe === '4h' ? 4 : 24
-    const candlesPerRequest = 1000
+    const candlesPerRequest = 200 // KuCoin ограничивает до 200 свечей за запрос
     const hoursPerRequest = candlesPerRequest * hoursPerCandle
     const msPerRequest = hoursPerRequest * 60 * 60 * 1000
     
     let yearCandles = []
     let currentEndTime = now
     let requestCount = 0
-    // Ограничиваем количество запросов для ускорения (3-4 запроса достаточно для годовых данных)
-    const maxRequests = timeframe === '1h' ? 4 : timeframe === '4h' ? 3 : 1
+    // Увеличиваем количество запросов, чтобы загрузить все свечи за год без разрывов
+    // KuCoin ограничивает до 200 свечей за запрос
+    // Для 4h: ~2190 свечей за год = нужно минимум 11 запросов (200 × 11 = 2200)
+    // Для 1h: ~8760 свечей за год = нужно минимум 44 запроса (200 × 44 = 8800)
+    // Увеличиваем лимит для гарантии загрузки всех свечей
+    const maxRequests = timeframe === '1h' ? 50 : timeframe === '4h' ? 15 : 5
     
     while (currentEndTime > yearStart && requestCount < maxRequests) {
       const requestStartTime = Math.max(yearStart, currentEndTime - msPerRequest)
@@ -202,32 +208,118 @@ async function getCoinStats(symbol, timeframe) {
       const batch = await getFuturesCandles(symbol, timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d', {
         startTime: requestStartTime,
         endTime: currentEndTime,
-        limit: 1000
+        limit: 200 // KuCoin ограничивает до 200
       })
       
       if (batch.length === 0) {
         break
       }
       
-      // Добавляем свечи в начало массива (так как идем от конца к началу)
-      yearCandles = [...batch, ...yearCandles]
+      // Удаляем дубликаты перед добавлением (по timestamp)
+      const existingTimestamps = new Set(yearCandles.map(c => c.openTime))
+      const newCandles = batch.filter(c => !existingTimestamps.has(c.openTime))
       
-      // Обновляем currentEndTime для следующего запроса
-      currentEndTime = requestStartTime
+      if (newCandles.length < batch.length) {
+        console.log(`[${symbol}] Batch ${requestCount + 1}: removed ${batch.length - newCandles.length} duplicate candles`)
+      }
+      
+      // Добавляем свечи в начало массива (так как идем от конца к началу)
+      yearCandles = [...newCandles, ...yearCandles]
+      
+      // Проверяем, достигли ли мы yearStart
+      const oldestCandleTime = Math.min(...batch.map(c => c.openTime))
+      if (oldestCandleTime <= yearStart) {
+        console.log(`[${symbol}] Reached yearStart, stopping pagination at request ${requestCount + 1}`)
+        break
+      }
+      
+      // ВАЖНО: Обновляем currentEndTime для следующего запроса правильно
+      // Берем время самой старой свечи минус 1 интервал, чтобы не пропустить свечи
+      const intervalSeconds = timeframe === '1h' ? 3600 : timeframe === '4h' ? 14400 : 86400
+      // Используем время самой старой свечи из batch (не из всех yearCandles)
+      const batchOldestTime = Math.min(...batch.map(c => c.openTime))
+      currentEndTime = Math.floor(batchOldestTime / 1000) * 1000 - intervalSeconds * 1000 // Конвертируем обратно в миллисекунды
       requestCount++
       
-      // Небольшая задержка между запросами (уменьшена для ускорения)
-      if (requestCount < maxRequests && currentEndTime > yearStart) {
-        await new Promise(resolve => setTimeout(resolve, 50))
+      console.log(`[${symbol}] Pagination progress:`, {
+        request: requestCount,
+        batchSize: batch.length,
+        totalCandles: yearCandles.length,
+        oldestCandle: new Date(batchOldestTime).toISOString(),
+        currentEndTime: new Date(currentEndTime).toISOString(),
+        yearStart: new Date(yearStart).toISOString(),
+        needMore: currentEndTime > yearStart
+      })
+      
+      // Небольшая задержка между запросами
+      if (currentEndTime > yearStart) {
+        await new Promise(resolve => setTimeout(resolve, 100)) // Увеличиваем задержку до 100ms
       }
     }
     
     // Сортируем свечи по времени (на случай если порядок нарушен)
     yearCandles.sort((a, b) => a.openTime - b.openTime)
     
+    // Удаляем дубликаты по timestamp после сортировки
+    const uniqueYearCandles = []
+    const seenTimestamps = new Set()
+    for (const candle of yearCandles) {
+      if (!seenTimestamps.has(candle.openTime)) {
+        seenTimestamps.add(candle.openTime)
+        uniqueYearCandles.push(candle)
+      }
+    }
+    
+    if (uniqueYearCandles.length < yearCandles.length) {
+      console.log(`[${symbol}] Removed ${yearCandles.length - uniqueYearCandles.length} duplicate candles after sorting`)
+    }
+    
+    // Фильтруем свечи: оставляем только те, которые попадают в период с начала года по сегодня
+    const filteredYearCandles = uniqueYearCandles.filter(c => {
+      return c.openTime >= yearStart && c.openTime <= now
+    })
+    
+    if (filteredYearCandles.length < uniqueYearCandles.length) {
+      console.log(`[${symbol}] Filtered out ${uniqueYearCandles.length - filteredYearCandles.length} candles outside year range`)
+    }
+    
+    yearCandles = filteredYearCandles
+    
+    // Проверяем, есть ли разрывы в данных
+    if (yearCandles.length > 1) {
+      const intervalMs = timeframe === '1h' ? 3600000 : timeframe === '4h' ? 14400000 : 86400000
+      let gaps = []
+      for (let i = 1; i < yearCandles.length; i++) {
+        const gap = yearCandles[i].openTime - yearCandles[i-1].openTime
+        if (gap > intervalMs * 2) { // Разрыв больше чем 2 интервала
+          gaps.push({
+            from: new Date(yearCandles[i-1].openTime).toISOString(),
+            to: new Date(yearCandles[i].openTime).toISOString(),
+            gapHours: Math.round(gap / (1000 * 60 * 60))
+          })
+        }
+      }
+      if (gaps.length > 0) {
+        console.warn(`[${symbol}] Found ${gaps.length} gaps in year candles:`, gaps.slice(0, 5)) // Показываем первые 5 разрывов
+      }
+    }
+    
+    // Проверяем, сколько свечей должно быть за год
+    const hoursPerCandleForCalc = timeframe === '1h' ? 1 : timeframe === '4h' ? 4 : 24
+    const hoursInYear = (now - yearStart) / (1000 * 60 * 60)
+    const expectedCandles = Math.floor(hoursInYear / hoursPerCandleForCalc)
+    
     console.log(`[${symbol}] Received candles:`, {
       yearCandles: yearCandles?.length || 0,
-      monthCandles: monthCandles?.length || 0
+      expectedCandles: expectedCandles,
+      coverage: yearCandles?.length > 0 ? ((yearCandles.length / expectedCandles) * 100).toFixed(1) + '%' : '0%',
+      monthCandles: monthCandles?.length || 0,
+      timeframe,
+      yearStart: new Date(yearStart).toISOString(),
+      monthStart: new Date(monthStart).toISOString(),
+      now: new Date(now).toISOString(),
+      firstCandle: yearCandles?.[0] ? new Date(yearCandles[0].openTime).toISOString() : 'none',
+      lastCandle: yearCandles?.[yearCandles.length - 1] ? new Date(yearCandles[yearCandles.length - 1].openTime).toISOString() : 'none'
     })
     
     if (!yearCandles || yearCandles.length === 0) {
@@ -265,13 +357,46 @@ async function getCoinStats(symbol, timeframe) {
     // Годовая статистика - используем strategy.backtest() как в trading/data.js
     let yearPnlPercent = 0
     let hasData = false
+    let yearFinalCapitalFromBacktest = null
+    let monthFinalCapitalFromBacktest = null
     
     if (formattedYearCandles.length > 0) {
       try {
         // Проверяем минимальное количество свечей для стратегии
         const minCandles = Math.max(strategyParams.nSlow || 30, strategyParams.trendLength || 200, 14)
+        console.log(`[${symbol}] Year backtest check:`, {
+          candlesCount: formattedYearCandles.length,
+          minCandles,
+          timeframe,
+          nSlow: strategyParams.nSlow,
+          trendLength: strategyParams.trendLength,
+          firstCandle: formattedYearCandles[0] ? new Date(formattedYearCandles[0].timestamp).toISOString() : null,
+          lastCandle: formattedYearCandles[formattedYearCandles.length - 1] ? new Date(formattedYearCandles[formattedYearCandles.length - 1].timestamp).toISOString() : null
+        })
+        
         if (formattedYearCandles.length < minCandles) {
           console.warn(`[${symbol}] Not enough candles for year backtest: ${formattedYearCandles.length} < ${minCandles}`)
+          // ВАЖНО: Даже если свечей недостаточно для полного trendLength, 
+          // мы все равно можем выполнить бэктест с адаптированными параметрами
+          // Адаптируем trendLength для годового бэктеста, если свечей недостаточно
+          const adaptedStrategyParams = {
+            ...strategyParams,
+            trendLength: Math.min(
+              Math.max(Math.floor(formattedYearCandles.length * 0.7), strategyParams.nSlow * 2),
+              strategyParams.trendLength || 200
+            )
+          }
+          
+          console.log(`[${symbol}] Using adapted strategy params for year:`, {
+            originalTrendLength: strategyParams.trendLength,
+            adaptedTrendLength: adaptedStrategyParams.trendLength
+          })
+          
+          const yearStrategy = new TradingStrategy(adaptedStrategyParams)
+          const yearResults = yearStrategy.backtest(formattedYearCandles)
+          yearPnlPercent = yearResults.totalPnlPercent || 0
+          hasData = true
+          yearFinalCapitalFromBacktest = yearResults.finalCapital || (1000 * (1 + yearPnlPercent / 100))
         } else {
           const yearStrategy = new TradingStrategy(strategyParams)
           const yearResults = yearStrategy.backtest(formattedYearCandles)
@@ -279,14 +404,34 @@ async function getCoinStats(symbol, timeframe) {
           yearPnlPercent = yearResults.totalPnlPercent || 0
           hasData = true
           
+          // Сохраняем финальный капитал из результатов backtest
+          const yearFinalCapitalFromBacktest = yearResults.finalCapital || (1000 * (1 + yearPnlPercent / 100))
+          
+          // Подсчитываем сделки по типам для проверки
+          const entryTrades = yearResults.trades?.filter(t => t.type === 'BUY' || t.type === 'SELL') || []
+          const exitTrades = yearResults.trades?.filter(t => t.type === 'EXIT') || []
+          const reverseTrades = exitTrades.filter(t => t.exitType === 'REVERSE') || []
+          const totalPnlFromTrades = exitTrades.reduce((sum, t) => sum + (t.pnlUsdt || 0), 0)
+          
           console.log(`[${symbol}] Year backtest result:`, {
             totalPnlPercent: yearPnlPercent,
             totalPnl: yearResults.totalPnl,
+            totalPnlFromTrades: totalPnlFromTrades.toFixed(2),
             trades: yearResults.trades?.length || 0,
+            entryTrades: entryTrades.length,
+            exitTrades: exitTrades.length,
+            reverseTrades: reverseTrades.length,
             finalCapital: yearResults.finalCapital,
             initialCapital: yearStrategy.initialCapital,
-            candlesCount: formattedYearCandles.length
+            candlesCount: formattedYearCandles.length,
+            firstTrade: yearResults.trades?.[0],
+            lastTrade: yearResults.trades?.[yearResults.trades.length - 1]
           })
+        }
+        
+        // Если hasData все еще false, значит бэктест не выполнился
+        if (!hasData) {
+          console.error(`[${symbol}] Year backtest failed - hasData is still false after processing`)
         }
       } catch (backtestError) {
         console.error(`[${symbol}] Year backtest error:`, backtestError.message, backtestError.stack)
@@ -297,14 +442,37 @@ async function getCoinStats(symbol, timeframe) {
     let monthPnlPercent = 0
     if (formattedMonthCandles.length > 0) {
       try {
-        // Проверяем минимальное количество свечей для стратегии
-        const minCandles = Math.max(strategyParams.nSlow || 30, strategyParams.trendLength || 200, 14)
-        if (formattedMonthCandles.length < minCandles) {
-          console.warn(`[${symbol}] Not enough candles for month backtest: ${formattedMonthCandles.length} < ${minCandles}`)
+        // Для месячного бэктеста используем меньшее минимальное количество свечей
+        // так как за месяц может быть недостаточно свечей для полного trendLength (200)
+        // Используем только nSlow (30) + небольшой запас
+        const minCandlesForMonth = Math.max(strategyParams.nSlow || 30, 14)
+        if (formattedMonthCandles.length < minCandlesForMonth) {
+          console.warn(`[${symbol}] Not enough candles for month backtest: ${formattedMonthCandles.length} < ${minCandlesForMonth}`)
         } else {
-          const monthStrategy = new TradingStrategy(strategyParams)
+          // Для месячного бэктеста адаптируем параметры стратегии
+          // Уменьшаем trendLength, так как за месяц может быть недостаточно свечей
+          const monthStrategyParams = {
+            ...strategyParams,
+            // Адаптируем trendLength: используем минимум из доступных свечей и исходного trendLength
+            // Но не меньше чем nSlow * 2 для сохранения логики стратегии
+            trendLength: Math.min(
+              Math.max(Math.floor(formattedMonthCandles.length * 0.7), strategyParams.nSlow * 2),
+              strategyParams.trendLength || 200
+            )
+          }
+          
+          console.log(`[${symbol}] Month strategy params:`, {
+            originalTrendLength: strategyParams.trendLength,
+            adaptedTrendLength: monthStrategyParams.trendLength,
+            candlesCount: formattedMonthCandles.length
+          })
+          
+          const monthStrategy = new TradingStrategy(monthStrategyParams)
           const monthResults = monthStrategy.backtest(formattedMonthCandles)
           monthPnlPercent = monthResults.totalPnlPercent || 0
+          
+          // Сохраняем финальный капитал из результатов backtest
+          const monthFinalCapitalFromBacktest = monthResults.finalCapital || (1000 * (1 + monthPnlPercent / 100))
           
           console.log(`[${symbol}] Month backtest result:`, {
             totalPnlPercent: monthPnlPercent,
@@ -332,7 +500,11 @@ async function getCoinStats(symbol, timeframe) {
       symbol,
       yearPnlPercent,
       monthPnlPercent,
-      hasData
+      hasData,
+      // Сохраняем также финальный капитал для правильного расчета общей доходности
+      // Используем finalCapital из результатов backtest, если доступен
+      yearFinalCapital: hasData ? (yearFinalCapitalFromBacktest || (1000 * (1 + yearPnlPercent / 100))) : 1000,
+      monthFinalCapital: monthPnlPercent !== 0 ? (monthFinalCapitalFromBacktest || (1000 * (1 + monthPnlPercent / 100))) : 1000
     }
   } catch (error) {
     console.error(`[${symbol}] Error calculating stats:`, error.message, error.stack)
@@ -378,20 +550,38 @@ async function calculateAggregateStats() {
     }
   }
   
-  // Просто суммируем проценты всех монет
+  // В TradingView при торговле несколькими символами каждая стратегия работает независимо
+  // Общая доходность = СУММА процентов всех монет (как в TradingView portfolio)
+  // Каждая монета торгуется с полным капиталом 1000 USDT, поэтому проценты суммируются
   const totalYearPnl = coinsWithData.reduce((sum, coin) => sum + coin.yearPnlPercent, 0)
   const totalMonthPnl = coinsWithData.reduce((sum, coin) => sum + coin.monthPnlPercent, 0)
   
-  console.log('Aggregate stats (sum of percentages):', {
-    totalYearPnl: totalYearPnl.toFixed(2),
-    totalMonthPnl: totalMonthPnl.toFixed(2),
+  // Проверяем, что все монеты учтены
+  const allCoinsProcessed = results.length === ALL_COINS.length
+  const missingCoins = ALL_COINS.filter(coin => !results.find(r => r.symbol === coin && r.hasData))
+  
+  console.log('Aggregate stats (sum of percentages, like TradingView portfolio):', {
+    totalYearPnl: totalYearPnl.toFixed(2) + '%',
+    totalMonthPnl: totalMonthPnl.toFixed(2) + '%',
     activeCoins: coinsWithData.length,
+    totalCoins: ALL_COINS.length,
+    allCoinsProcessed,
+    missingCoins: missingCoins.length > 0 ? missingCoins : 'none',
     coinDetails: coinsWithData.map(c => ({
       symbol: c.symbol,
-      year: c.yearPnlPercent.toFixed(2),
-      month: c.monthPnlPercent.toFixed(2)
-    }))
+      year: c.yearPnlPercent.toFixed(2) + '%',
+      month: c.monthPnlPercent.toFixed(2) + '%'
+    })),
+    coinsWithoutData: results.filter(r => !r.hasData).map(r => r.symbol)
   })
+  
+  if (missingCoins.length > 0) {
+    console.warn('⚠️ Some coins are missing from results:', missingCoins)
+  }
+  
+  if (coinsWithData.length < ALL_COINS.length) {
+    console.warn(`⚠️ Only ${coinsWithData.length} out of ${ALL_COINS.length} coins have data`)
+  }
   
   return {
     totalYearPnl: totalYearPnl,
@@ -428,7 +618,10 @@ export default async function handler(req, res) {
     const { getLatestAggregateStats } = require('../../../lib/db')
     const dbStats = await getLatestAggregateStats()
     
-    if (dbStats) {
+    // Проверяем параметр force для принудительного обновления
+    const forceUpdate = req.query.force === 'true' || req.query.force === '1'
+    
+    if (dbStats && !forceUpdate) {
       // Проверяем, не устарела ли статистика (если старше 25 часов, пересчитываем)
       const statsAge = Date.now() - dbStats.timestamp
       const MAX_AGE = 25 * 60 * 60 * 1000 // 25 часов
@@ -455,12 +648,16 @@ export default async function handler(req, res) {
       console.log('=== No stats in DB, calculating ===')
     }
     
-    // Если в БД нет данных или они устарели, рассчитываем на лету
-    console.log('=== Calculating stats on the fly ===')
+    // Если в БД нет данных или они устарели, или принудительное обновление, рассчитываем на лету
+    if (forceUpdate) {
+      console.log('=== Force update requested, recalculating stats ===')
+    } else {
+      console.log('=== Calculating stats on the fly ===')
+    }
     const stats = await calculateAggregateStats()
     
-    // Сохраняем в БД (асинхронно, не ждем)
-    if (dbStats === null) {
+    // Сохраняем в БД (асинхронно, не ждем) - всегда сохраняем при пересчете
+    if (dbStats === null || forceUpdate) {
       const { saveAggregateStats } = require('../../../lib/db')
       saveAggregateStats({
         yearPnlPercent: stats.totalYearPnl,

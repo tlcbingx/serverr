@@ -224,13 +224,21 @@ async function getFuturesCandles(symbol, interval, options = {}) {
         }
       })
       
-      allCandles = [...allCandles, ...batch]
+      // Удаляем дубликаты перед добавлением (по timestamp)
+      const existingTimestamps = new Set(allCandles.map(c => c.openTime))
+      const newCandles = batch.filter(c => !existingTimestamps.has(c.openTime))
+      
+      if (newCandles.length < batch.length) {
+        console.log(`[KuCoin] Batch ${attempts + 1}: removed ${batch.length - newCandles.length} duplicate candles`)
+      }
+      
+      allCandles = [...allCandles, ...newCandles]
       
       // Находим самую старую свечу в батче
       const oldestTimestamp = Math.min(...batch.map(c => c.openTime))
       const oldestDate = new Date(oldestTimestamp).toISOString()
       
-      console.log(`[KuCoin] Batch ${attempts + 1}: received ${batch.length} candles, total: ${allCandles.length}, oldest: ${oldestDate}`)
+      console.log(`[KuCoin] Batch ${attempts + 1}: received ${batch.length} candles (${newCandles.length} new), total: ${allCandles.length}, oldest: ${oldestDate}`)
       
       // Проверяем, достигли ли мы targetStartTime
       if (oldestTimestamp <= targetStartTime * 1000) {
@@ -241,12 +249,13 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       // Если получили меньше maxLimit свечей, но еще не достигли targetStartTime, продолжаем
       // Если получили maxLimit свечей, обязательно продолжаем
       if (batch.length > 0 && oldestTimestamp > targetStartTime * 1000) {
-        // Обновляем endAt для следующего запроса - берем время самой старой свечи минус 1 секунда
-        endAt = Math.floor(oldestTimestamp / 1000) - 1
+        // ВАЖНО: Обновляем endAt для следующего запроса правильно
+        // Берем время самой старой свечи минус 1 интервал, чтобы не пропустить свечи
+        const intervalSeconds = interval === '1h' ? 3600 : interval === '4h' ? 14400 : 86400
+        endAt = Math.floor(oldestTimestamp / 1000) - intervalSeconds
         attempts++
         
-        // Минимальная задержка только для избежания rate limits (KuCoin обычно позволяет быстрые запросы)
-        // Убираем задержку для ускорения загрузки
+        // Минимальная задержка только для избежания rate limits
         continue
       }
       
@@ -266,14 +275,48 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       })
     }
     
-    // Сортируем по времени (старые первыми) и ограничиваем лимитом
+    // Сортируем по времени (старые первыми) и удаляем дубликаты
     allCandles.sort((a, b) => a.openTime - b.openTime)
+    
+    // Удаляем дубликаты по timestamp
+    const uniqueCandles = []
+    const seenTimestamps = new Set()
+    for (const candle of allCandles) {
+      if (!seenTimestamps.has(candle.openTime)) {
+        seenTimestamps.add(candle.openTime)
+        uniqueCandles.push(candle)
+      }
+    }
+    
+    if (uniqueCandles.length < allCandles.length) {
+      console.log(`[KuCoin] Removed ${allCandles.length - uniqueCandles.length} duplicate candles after sorting`)
+    }
+    allCandles = uniqueCandles
+    
+    // Проверяем на разрывы в данных
+    if (allCandles.length > 1) {
+      const intervalMs = interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000
+      let gaps = []
+      for (let i = 1; i < allCandles.length; i++) {
+        const gap = allCandles[i].openTime - allCandles[i-1].openTime
+        if (gap > intervalMs * 2) { // Разрыв больше чем 2 интервала
+          gaps.push({
+            from: new Date(allCandles[i-1].openTime).toISOString(),
+            to: new Date(allCandles[i].openTime).toISOString(),
+            gapHours: Math.round(gap / (1000 * 60 * 60))
+          })
+        }
+      }
+      if (gaps.length > 0) {
+        console.warn(`[KuCoin] Found ${gaps.length} gaps in candles for ${symbol}:`, gaps.slice(0, 5)) // Показываем первые 5 разрывов
+      }
+    }
     
     if (options.limit && allCandles.length > options.limit) {
       allCandles = allCandles.slice(-options.limit) // Берем последние N свечей
     }
     
-    console.log(`[KuCoin] Received ${allCandles.length} candles for ${symbol} (after filtering)`)
+    console.log(`[KuCoin] Received ${allCandles.length} candles for ${symbol} (after filtering and deduplication)`)
     
     // Сохраняем в БД для кэширования (асинхронно, не ждем)
     if (process.env.DB_HOST && allCandles.length > 0) {

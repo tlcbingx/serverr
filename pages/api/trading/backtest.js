@@ -423,8 +423,16 @@ export default async function handler(req, res) {
     // Собираем все входы и выходы из trades напрямую (включая частичные выходы)
     const formattedTrades = []
     const entryMap = new Map() // tradeId -> entry info
+    const hasExitMap = new Map() // tradeId -> has exit (для определения открытых позиций)
     
-    // Сначала собираем все входы
+    // Сначала проверяем, какие позиции закрыты (есть выходы)
+    for (const trade of trades) {
+      if (trade.type === 'EXIT') {
+        hasExitMap.set(trade.id, true)
+      }
+    }
+    
+    // Собираем все входы (только для открытых позиций - без выходов)
     for (const trade of trades) {
       if (trade.type === 'BUY' || trade.type === 'SELL') {
         // Запись о входе
@@ -464,7 +472,7 @@ export default async function handler(req, res) {
         
         entryMap.set(trade.id, entryInfo)
         
-        // Добавляем запись о входе
+        // Добавляем запись о входе для всех позиций (и открытых, и закрытых)
         formattedTrades.push({
           ...entryInfo,
           exitTime: 0,
