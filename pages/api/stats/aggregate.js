@@ -163,39 +163,169 @@ function getTimeBoundaries() {
   }
 }
 
-// Вспомогательная функция для вызова /api/trading/backtest (использует ту же логику, что и детальная страница)
-async function callBacktestAPI(candles, symbol, timeframe, strategyParams) {
+// Прямая логика бэктеста (та же, что в /api/trading/backtest) - без HTTP вызова
+// Это работает в serverless окружении, где HTTP вызовы могут не работать
+async function runBacktest(candles, symbol, timeframe, strategyParams) {
   try {
-    // В серверном коде Next.js используем внутренний HTTP вызов
-    // Определяем базовый URL
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
-                   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-    
-    const url = `${baseUrl}/api/trading/backtest`
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        candles,
-        symbol,
-        timeframe,
-        strategyParams
-      })
-    })
-    
-    if (!response.ok) {
-      throw new Error(`Backtest API error: ${response.status} ${response.statusText}`)
+    // Форматируем свечи для стратегии
+    const formattedCandles = candles.map(c => ({
+      timestamp: c.timestamp || c.time,
+      open: parseFloat(c.open),
+      high: parseFloat(c.high),
+      low: parseFloat(c.low),
+      close: parseFloat(c.close),
+      volume: parseFloat(c.volume || 0)
+    })).sort((a, b) => a.timestamp - b.timestamp)
+
+    if (formattedCandles.length === 0) {
+      const defaultInitialEquity = strategyParams.initialCapital || 1000
+      return {
+        success: true,
+        statistics: {
+          totalPnlPercent: 0,
+          currentEquity: defaultInitialEquity,
+          initialEquity: defaultInitialEquity
+        }
+      }
     }
+
+    // Создаем стратегию
+    const strategy = new TradingStrategy(strategyParams)
     
-    const result = await response.json()
-    if (!result.success) {
-      throw new Error(result.error || 'Backtest failed')
+    // Параметры для расчета PnL
+    const initialEquity = strategyParams.initialCapital
+    const positionSizePercent = strategyParams.positionSizePercent / 100
+    const commissionEnter = 0.001
+    const commissionExit = 0.001
+
+    let totalPnl = 0
+    let currentEquity = initialEquity
+    let peakEquity = initialEquity
+    let maxDrawdown = 0
+    let maxDrawdownUsdt = 0
+
+    // Сбрасываем стратегию
+    strategy.initialCapital = strategyParams.initialCapital
+    strategy.capital = strategyParams.initialCapital
+    strategy.positionSizeAtEntry = 0
+    strategy.position = 0
+    strategy.tradeId = 0
+    strategy.trades = []
+    strategy.equityHistory = []
+    
+    // Сброс состояний позиций
+    strategy.longReachedTp1 = false
+    strategy.longReachedTp2 = false
+    strategy.longTp1Executed = false
+    strategy.longTp2Executed = false
+    strategy.longTp3Executed = false
+    strategy.longCurrentStop = null
+    strategy.longStage = 0
+    strategy.shortReachedTp1 = false
+    strategy.shortReachedTp2 = false
+    strategy.shortTp1Executed = false
+    strategy.shortTp2Executed = false
+    strategy.shortTp3Executed = false
+    strategy.shortCurrentStop = null
+    strategy.shortStage = 0
+    strategy.longOrdersRecreatedAfterTp1 = false
+    strategy.longOrdersRecreatedAfterTp2 = false
+    strategy.shortOrdersRecreatedAfterTp1 = false
+    strategy.shortOrdersRecreatedAfterTp2 = false
+    strategy.pendingOrderRecreation = null
+
+    // Запускаем стратегию
+    const openPositions = []
+    for (let i = 0; i < formattedCandles.length; i++) {
+      const candle = formattedCandles[i]
+      const update = strategy.update(candle)
+
+      for (const trade of update.trades) {
+        if (trade.type === 'BUY' || trade.type === 'SELL') {
+          // Вход в позицию
+          let positionSize = trade.positionSizeAtEntry || (currentEquity * positionSizePercent)
+          if (trade.positionSizeAtEntry) {
+            const capitalBeforeEntry = trade.positionSizeAtEntry / positionSizePercent
+            currentEquity = capitalBeforeEntry
+            positionSize = trade.positionSizeAtEntry
+          }
+          
+          const commissionCost = positionSize * commissionEnter
+          openPositions.push({
+            id: trade.id,
+            type: trade.type,
+            entryPrice: trade.entryPrice || candle.close,
+            entryTime: trade.entryTime || candle.timestamp,
+            positionSize,
+            positionSizeAtEntry: positionSize,
+            commissionEnter: commissionCost
+          })
+          currentEquity -= commissionCost
+        } else if (trade.type === 'EXIT') {
+          // Выход из позиции
+          const position = openPositions.find(p => p.id === trade.id)
+          if (!position) continue
+          
+          const exitPrice = trade.exitPrice || candle.close
+          const exitPercent = trade.exitPercent || 100
+          const originalPositionSize = position.positionSizeAtEntry || position.positionSize
+          const exitPositionSize = (originalPositionSize * exitPercent / 100)
+
+          // Расчет PnL
+          let pricePnlPercent = 0
+          if (position.type === 'BUY') {
+            pricePnlPercent = ((exitPrice - position.entryPrice) / position.entryPrice) * 100
+          } else {
+            pricePnlPercent = ((position.entryPrice - exitPrice) / position.entryPrice) * 100
+          }
+
+          const pnlUsdtBeforeCommission = (pricePnlPercent / 100) * exitPositionSize
+          const commissionExitCost = exitPositionSize * commissionExit
+          const pnlUsdt = pnlUsdtBeforeCommission - commissionExitCost
+
+          // Используем pnlUsdt из стратегии, если доступен
+          const finalPnlUsdt = trade.pnlUsdt ?? pnlUsdt
+          totalPnl += finalPnlUsdt
+          currentEquity += finalPnlUsdt
+
+          // Удаляем позицию при полном закрытии
+          const isFullExit = !trade.partial || exitPercent >= 100 || trade.remainingPosition === 0
+          if (isFullExit) {
+            const index = openPositions.findIndex(p => p.id === trade.id)
+            if (index !== -1) openPositions.splice(index, 1)
+          } else {
+            position.positionSize -= exitPositionSize
+          }
+        }
+      }
+
+      // Обновляем equity для drawdown
+      if (currentEquity > peakEquity) {
+        peakEquity = currentEquity
+      }
+      const drawdown = peakEquity > 0 ? ((peakEquity - currentEquity) / peakEquity) * 100 : 0
+      const drawdownUsdt = peakEquity - currentEquity
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown
+        maxDrawdownUsdt = drawdownUsdt
+      }
     }
-    
-    return result
+
+    const totalPnlPercent = initialEquity > 0 ? (totalPnl / initialEquity) * 100 : 0
+
+    return {
+      success: true,
+      statistics: {
+        totalPnlPercent: parseFloat(totalPnlPercent.toFixed(2)),
+        currentEquity: parseFloat(currentEquity.toFixed(2)),
+        initialEquity: parseFloat(initialEquity.toFixed(2)),
+        totalPnl: parseFloat(totalPnl.toFixed(2)),
+        maxDrawdown: parseFloat(maxDrawdown.toFixed(2)),
+        maxDrawdownUsdt: parseFloat(maxDrawdownUsdt.toFixed(2))
+      }
+    }
   } catch (error) {
-    console.error(`[${symbol}] Error calling backtest API:`, error.message)
+    console.error(`[${symbol}] Error in runBacktest:`, error.message, error.stack)
     throw error
   }
 }
@@ -399,7 +529,7 @@ async function getCoinStats(symbol, timeframe) {
     
     if (formattedYearCandles.length > 0) {
       try {
-        const yearResult = await callBacktestAPI(formattedYearCandles, symbol, timeframe, strategyParams)
+        const yearResult = await runBacktest(formattedYearCandles, symbol, timeframe, strategyParams)
         if (yearResult.statistics) {
           yearPnlPercent = yearResult.statistics.totalPnlPercent || 0
           yearFinalCapital = yearResult.statistics.currentEquity || 1000
@@ -419,7 +549,7 @@ async function getCoinStats(symbol, timeframe) {
     let monthPnlPercent = 0
     if (formattedMonthCandles.length > 0) {
       try {
-        const monthResult = await callBacktestAPI(formattedMonthCandles, symbol, timeframe, strategyParams)
+        const monthResult = await runBacktest(formattedMonthCandles, symbol, timeframe, strategyParams)
         if (monthResult.statistics) {
           monthPnlPercent = monthResult.statistics.totalPnlPercent || 0
           monthFinalCapital = monthResult.statistics.currentEquity || 1000
