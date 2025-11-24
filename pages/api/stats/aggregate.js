@@ -144,19 +144,17 @@ async function getFuturesCandles(symbol, interval, options = {}) {
 function getTimeBoundaries() {
   // Используем UTC для гарантии правильной даты независимо от часового пояса сервера
   const now = new Date()
-  const year = now.getUTCFullYear() // Используем UTC год вместо локального
   const month = now.getUTCMonth() // Используем UTC месяц
   
-  // Начало текущего года (1 января текущего года, 00:00:00 UTC)
-  const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0))
-  const yearStartTimestamp = yearStart.getTime()
+  // ВАЖНО: Используем последние 365 дней (как в детальной странице), а не календарный год
+  // Это соответствует тому, что пользователь видит при выборе "За 365 дней" в details.js
+  const nowTimestamp = now.getTime()
+  const yearStartTimestamp = nowTimestamp - (365 * 24 * 60 * 60 * 1000) // 365 дней назад
   
   // Начало текущего месяца (1 число текущего месяца, 00:00:00 UTC)
+  const year = now.getUTCFullYear()
   const monthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0))
   const monthStartTimestamp = monthStart.getTime()
-  
-  // Текущее время
-  const nowTimestamp = now.getTime()
   
   return {
     yearStart: yearStartTimestamp,
@@ -165,8 +163,45 @@ function getTimeBoundaries() {
   }
 }
 
+// Вспомогательная функция для вызова /api/trading/backtest (использует ту же логику, что и детальная страница)
+async function callBacktestAPI(candles, symbol, timeframe, strategyParams) {
+  try {
+    // В серверном коде Next.js используем внутренний HTTP вызов
+    // Определяем базовый URL
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
+                   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+    
+    const url = `${baseUrl}/api/trading/backtest`
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        candles,
+        symbol,
+        timeframe,
+        strategyParams
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Backtest API error: ${response.status} ${response.statusText}`)
+    }
+    
+    const result = await response.json()
+    if (!result.success) {
+      throw new Error(result.error || 'Backtest failed')
+    }
+    
+    return result
+  } catch (error) {
+    console.error(`[${symbol}] Error calling backtest API:`, error.message)
+    throw error
+  }
+}
+
 // Функция для расчета статистики по одной монете
-// Использует тот же подход, что и /api/trading/data - напрямую вызывает strategy.backtest()
+// ИСПОЛЬЗУЕТ ТОТ ЖЕ API /api/trading/backtest, что и детальная страница - гарантирует идентичные результаты
 async function getCoinStats(symbol, timeframe) {
   try {
     const { yearStart, monthStart, now } = getTimeBoundaries()
@@ -356,137 +391,45 @@ async function getCoinStats(symbol, timeframe) {
       positionSizePercent: 50 // Явно указываем, как в trading/data.js
     }
     
-    // Годовая статистика - используем strategy.backtest() как в trading/data.js
+    // Годовая статистика - используем /api/trading/backtest (тот же API, что и детальная страница)
     let yearPnlPercent = 0
     let hasData = false
-    let yearFinalCapitalFromBacktest = null
-    let monthFinalCapitalFromBacktest = null
+    let yearFinalCapital = 1000
+    let monthFinalCapital = 1000
     
     if (formattedYearCandles.length > 0) {
       try {
-        // Проверяем минимальное количество свечей для стратегии
-        const minCandles = Math.max(strategyParams.nSlow || 30, strategyParams.trendLength || 200, 14)
-        console.log(`[${symbol}] Year backtest check:`, {
-          candlesCount: formattedYearCandles.length,
-          minCandles,
-          timeframe,
-          nSlow: strategyParams.nSlow,
-          trendLength: strategyParams.trendLength,
-          firstCandle: formattedYearCandles[0] ? new Date(formattedYearCandles[0].timestamp).toISOString() : null,
-          lastCandle: formattedYearCandles[formattedYearCandles.length - 1] ? new Date(formattedYearCandles[formattedYearCandles.length - 1].timestamp).toISOString() : null
-        })
-        
-        if (formattedYearCandles.length < minCandles) {
-          console.warn(`[${symbol}] Not enough candles for year backtest: ${formattedYearCandles.length} < ${minCandles}`)
-          // ВАЖНО: Даже если свечей недостаточно для полного trendLength, 
-          // мы все равно можем выполнить бэктест с адаптированными параметрами
-          // Адаптируем trendLength для годового бэктеста, если свечей недостаточно
-          const adaptedStrategyParams = {
-            ...strategyParams,
-            trendLength: Math.min(
-              Math.max(Math.floor(formattedYearCandles.length * 0.7), strategyParams.nSlow * 2),
-              strategyParams.trendLength || 200
-            )
-          }
-          
-          console.log(`[${symbol}] Using adapted strategy params for year:`, {
-            originalTrendLength: strategyParams.trendLength,
-            adaptedTrendLength: adaptedStrategyParams.trendLength
-          })
-          
-          const yearStrategy = new TradingStrategy(adaptedStrategyParams)
-          const yearResults = yearStrategy.backtest(formattedYearCandles)
-          yearPnlPercent = yearResults.totalPnlPercent || 0
+        const yearResult = await callBacktestAPI(formattedYearCandles, symbol, timeframe, strategyParams)
+        if (yearResult.statistics) {
+          yearPnlPercent = yearResult.statistics.totalPnlPercent || 0
+          yearFinalCapital = yearResult.statistics.currentEquity || 1000
           hasData = true
-          yearFinalCapitalFromBacktest = yearResults.finalCapital || (1000 * (1 + yearPnlPercent / 100))
-        } else {
-          const yearStrategy = new TradingStrategy(strategyParams)
-          const yearResults = yearStrategy.backtest(formattedYearCandles)
-          // Используем totalPnlPercent из результатов backtest (как в trading/data.js)
-          yearPnlPercent = yearResults.totalPnlPercent || 0
-          hasData = true
-          
-          // Сохраняем финальный капитал из результатов backtest
-          const yearFinalCapitalFromBacktest = yearResults.finalCapital || (1000 * (1 + yearPnlPercent / 100))
-          
-          // Подсчитываем сделки по типам для проверки
-          const entryTrades = yearResults.trades?.filter(t => t.type === 'BUY' || t.type === 'SELL') || []
-          const exitTrades = yearResults.trades?.filter(t => t.type === 'EXIT') || []
-          const reverseTrades = exitTrades.filter(t => t.exitType === 'REVERSE') || []
-          const totalPnlFromTrades = exitTrades.reduce((sum, t) => sum + (t.pnlUsdt || 0), 0)
-          
-          console.log(`[${symbol}] Year backtest result:`, {
+          console.log(`[${symbol}] Year stats from /api/trading/backtest:`, {
             totalPnlPercent: yearPnlPercent,
-            totalPnl: yearResults.totalPnl,
-            totalPnlFromTrades: totalPnlFromTrades.toFixed(2),
-            trades: yearResults.trades?.length || 0,
-            entryTrades: entryTrades.length,
-            exitTrades: exitTrades.length,
-            reverseTrades: reverseTrades.length,
-            finalCapital: yearResults.finalCapital,
-            initialCapital: yearStrategy.initialCapital,
-            candlesCount: formattedYearCandles.length,
-            firstTrade: yearResults.trades?.[0],
-            lastTrade: yearResults.trades?.[yearResults.trades.length - 1]
+            currentEquity: yearFinalCapital,
+            initialEquity: yearResult.statistics.initialEquity
           })
-        }
-        
-        // Если hasData все еще false, значит бэктест не выполнился
-        if (!hasData) {
-          console.error(`[${symbol}] Year backtest failed - hasData is still false after processing`)
         }
       } catch (backtestError) {
-        console.error(`[${symbol}] Year backtest error:`, backtestError.message, backtestError.stack)
+        console.error(`[${symbol}] Year backtest API error:`, backtestError.message)
       }
     }
     
-    // Месячная статистика
+    // Месячная статистика - используем /api/trading/backtest
     let monthPnlPercent = 0
     if (formattedMonthCandles.length > 0) {
       try {
-        // Для месячного бэктеста используем меньшее минимальное количество свечей
-        // так как за месяц может быть недостаточно свечей для полного trendLength (200)
-        // Используем только nSlow (30) + небольшой запас
-        const minCandlesForMonth = Math.max(strategyParams.nSlow || 30, 14)
-        if (formattedMonthCandles.length < minCandlesForMonth) {
-          console.warn(`[${symbol}] Not enough candles for month backtest: ${formattedMonthCandles.length} < ${minCandlesForMonth}`)
-        } else {
-          // Для месячного бэктеста адаптируем параметры стратегии
-          // Уменьшаем trendLength, так как за месяц может быть недостаточно свечей
-          const monthStrategyParams = {
-            ...strategyParams,
-            // Адаптируем trendLength: используем минимум из доступных свечей и исходного trendLength
-            // Но не меньше чем nSlow * 2 для сохранения логики стратегии
-            trendLength: Math.min(
-              Math.max(Math.floor(formattedMonthCandles.length * 0.7), strategyParams.nSlow * 2),
-              strategyParams.trendLength || 200
-            )
-          }
-          
-          console.log(`[${symbol}] Month strategy params:`, {
-            originalTrendLength: strategyParams.trendLength,
-            adaptedTrendLength: monthStrategyParams.trendLength,
-            candlesCount: formattedMonthCandles.length
-          })
-          
-          const monthStrategy = new TradingStrategy(monthStrategyParams)
-          const monthResults = monthStrategy.backtest(formattedMonthCandles)
-          monthPnlPercent = monthResults.totalPnlPercent || 0
-          
-          // Сохраняем финальный капитал из результатов backtest
-          const monthFinalCapitalFromBacktest = monthResults.finalCapital || (1000 * (1 + monthPnlPercent / 100))
-          
-          console.log(`[${symbol}] Month backtest result:`, {
+        const monthResult = await callBacktestAPI(formattedMonthCandles, symbol, timeframe, strategyParams)
+        if (monthResult.statistics) {
+          monthPnlPercent = monthResult.statistics.totalPnlPercent || 0
+          monthFinalCapital = monthResult.statistics.currentEquity || 1000
+          console.log(`[${symbol}] Month stats from /api/trading/backtest:`, {
             totalPnlPercent: monthPnlPercent,
-            totalPnl: monthResults.totalPnl,
-            trades: monthResults.trades?.length || 0,
-            finalCapital: monthResults.finalCapital,
-            initialCapital: monthStrategy.initialCapital,
-            candlesCount: formattedMonthCandles.length
+            currentEquity: monthFinalCapital
           })
         }
       } catch (backtestError) {
-        console.error(`[${symbol}] Month backtest error:`, backtestError.message, backtestError.stack)
+        console.error(`[${symbol}] Month backtest API error:`, backtestError.message)
       }
     } else {
       console.warn(`[${symbol}] No month candles available for backtest`)
@@ -503,10 +446,8 @@ async function getCoinStats(symbol, timeframe) {
       yearPnlPercent,
       monthPnlPercent,
       hasData,
-      // Сохраняем также финальный капитал для правильного расчета общей доходности
-      // Используем finalCapital из результатов backtest, если доступен
-      yearFinalCapital: hasData ? (yearFinalCapitalFromBacktest || (1000 * (1 + yearPnlPercent / 100))) : 1000,
-      monthFinalCapital: monthPnlPercent !== 0 ? (monthFinalCapitalFromBacktest || (1000 * (1 + monthPnlPercent / 100))) : 1000
+      yearFinalCapital,
+      monthFinalCapital
     }
   } catch (error) {
     console.error(`[${symbol}] Error calculating stats:`, error.message, error.stack)
@@ -552,8 +493,7 @@ async function calculateAggregateStats() {
     }
   }
   
-  // В TradingView при торговле несколькими символами каждая стратегия работает независимо
-  // Общая доходность = СУММА процентов всех монет (как в TradingView portfolio)
+  // Суммируем проценты всех монет (как в TradingView portfolio)
   // Каждая монета торгуется с полным капиталом 1000 USDT, поэтому проценты суммируются
   const totalYearPnl = coinsWithData.reduce((sum, coin) => sum + coin.yearPnlPercent, 0)
   const totalMonthPnl = coinsWithData.reduce((sum, coin) => sum + coin.monthPnlPercent, 0)

@@ -139,14 +139,22 @@ async function getFuturesCandles(symbol, interval, options = {}) {
 function getTimeBoundaries() {
   // Используем UTC для гарантии правильной даты независимо от часового пояса сервера
   const now = new Date()
-  const year = now.getUTCFullYear() // Используем UTC год вместо локального
   const month = now.getUTCMonth() // Используем UTC месяц
-  const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0))
+  
+  // ВАЖНО: Используем последние 365 дней (как в детальной странице), а не календарный год
+  // Это соответствует тому, что пользователь видит при выборе "За 365 дней" в details.js
+  const nowTimestamp = now.getTime()
+  const yearStartTimestamp = nowTimestamp - (365 * 24 * 60 * 60 * 1000) // 365 дней назад
+  
+  // Начало текущего месяца (1 число текущего месяца, 00:00:00 UTC)
+  const year = now.getUTCFullYear()
   const monthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0))
+  const monthStartTimestamp = monthStart.getTime()
+  
   return {
-    yearStart: yearStart.getTime(),
-    monthStart: monthStart.getTime(),
-    now: now.getTime()
+    yearStart: yearStartTimestamp,
+    monthStart: monthStartTimestamp,
+    now: nowTimestamp
   }
 }
 
@@ -420,11 +428,16 @@ async function calculateAggregateStats() {
     return { totalYearPnl: 0, totalMonthPnl: 0, activeCoins: 0, coinStats: results }
   }
   
-  // В TradingView при торговле несколькими символами каждая стратегия работает независимо
-  // Общая доходность = СУММА процентов всех монет (как в TradingView portfolio)
+  // Суммируем проценты всех монет (как в TradingView portfolio)
   // Каждая монета торгуется с полным капиталом 1000 USDT, поэтому проценты суммируются
   const totalYearPnl = coinsWithData.reduce((sum, coin) => sum + coin.yearPnlPercent, 0)
   const totalMonthPnl = coinsWithData.reduce((sum, coin) => sum + coin.monthPnlPercent, 0)
+  
+  console.log('Aggregate stats (sum of percentages):', {
+    totalYearPnl: totalYearPnl.toFixed(2) + '%',
+    totalMonthPnl: totalMonthPnl.toFixed(2) + '%',
+    activeCoins: coinsWithData.length
+  })
   
   return {
     totalYearPnl,
