@@ -137,10 +137,12 @@ async function getFuturesCandles(symbol, interval, options = {}) {
 }
 
 function getTimeBoundaries() {
+  // Используем UTC для гарантии правильной даты независимо от часового пояса сервера
   const now = new Date()
-  const year = now.getFullYear()
+  const year = now.getUTCFullYear() // Используем UTC год вместо локального
+  const month = now.getUTCMonth() // Используем UTC месяц
   const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0))
-  const monthStart = new Date(Date.UTC(year, now.getUTCMonth(), 1, 0, 0, 0, 0))
+  const monthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0))
   return {
     yearStart: yearStart.getTime(),
     monthStart: monthStart.getTime(),
@@ -159,7 +161,7 @@ async function getCoinStats(symbol, timeframe) {
     })
     
     const hoursPerCandle = timeframe === '1h' ? 1 : timeframe === '4h' ? 4 : 24
-    const candlesPerRequest = 1000
+    const candlesPerRequest = 200 // KuCoin ограничивает до 200 свечей за запрос
     const hoursPerRequest = candlesPerRequest * hoursPerCandle
     const msPerRequest = hoursPerRequest * 60 * 60 * 1000
     
@@ -167,14 +169,18 @@ async function getCoinStats(symbol, timeframe) {
     let currentEndTime = now
     let requestCount = 0
     // Увеличиваем количество запросов, чтобы загрузить все свечи за год без разрывов
-    const maxRequests = timeframe === '1h' ? 10 : timeframe === '4h' ? 5 : 2
+    // KuCoin ограничивает до 200 свечей за запрос
+    // Для 4h: ~2190 свечей за год = нужно минимум 11 запросов (200 × 11 = 2200)
+    // Для 1h: ~8760 свечей за год = нужно минимум 44 запроса (200 × 44 = 8800)
+    // Увеличиваем лимит для гарантии загрузки всех свечей
+    const maxRequests = timeframe === '1h' ? 50 : timeframe === '4h' ? 15 : 5
     
     while (currentEndTime > yearStart && requestCount < maxRequests) {
       const requestStartTime = Math.max(yearStart, currentEndTime - msPerRequest)
       const batch = await getFuturesCandles(symbol, timeframe === '1h' ? '1h' : timeframe === '4h' ? '4h' : '1d', {
         startTime: requestStartTime,
         endTime: currentEndTime,
-        limit: 1000
+        limit: 200 // KuCoin ограничивает до 200
       })
       
       if (batch.length === 0) break
@@ -192,10 +198,24 @@ async function getCoinStats(symbol, timeframe) {
       
       // ВАЖНО: Обновляем currentEndTime правильно - минус 1 интервал, чтобы не пропустить свечи
       const intervalSeconds = timeframe === '1h' ? 3600 : timeframe === '4h' ? 14400 : 86400
-      currentEndTime = Math.floor(oldestCandleTime / 1000) - intervalSeconds
+      // Используем время самой старой свечи из batch (не из всех yearCandles)
+      const batchOldestTime = Math.min(...batch.map(c => c.openTime))
+      currentEndTime = Math.floor(batchOldestTime / 1000) * 1000 - intervalSeconds * 1000 // Конвертируем обратно в миллисекунды
       requestCount++
+      
+      console.log(`[${symbol}] Pagination progress:`, {
+        request: requestCount,
+        batchSize: batch.length,
+        totalCandles: yearCandles.length,
+        oldestCandle: new Date(batchOldestTime).toISOString(),
+        currentEndTime: new Date(currentEndTime).toISOString(),
+        yearStart: new Date(yearStart).toISOString(),
+        needMore: currentEndTime > yearStart
+      })
+      
+      // Небольшая задержка между запросами
       if (currentEndTime > yearStart) {
-        await new Promise(resolve => setTimeout(resolve, 50))
+        await new Promise(resolve => setTimeout(resolve, 100)) // Увеличиваем задержку до 100ms
       }
     }
     
@@ -212,11 +232,40 @@ async function getCoinStats(symbol, timeframe) {
     }
     
     if (uniqueYearCandles.length < yearCandles.length) {
-      console.log(`[${symbol}] Removed ${yearCandles.length - uniqueYearCandles.length} duplicate candles`)
+      console.log(`[${symbol}] Removed ${yearCandles.length - uniqueYearCandles.length} duplicate candles after sorting`)
     }
-    yearCandles = uniqueYearCandles
+    
+    // Фильтруем свечи: оставляем только те, которые попадают в период с начала года по сегодня
+    const filteredYearCandles = uniqueYearCandles.filter(c => {
+      return c.openTime >= yearStart && c.openTime <= now
+    })
+    
+    if (filteredYearCandles.length < uniqueYearCandles.length) {
+      console.log(`[${symbol}] Filtered out ${uniqueYearCandles.length - filteredYearCandles.length} candles outside year range`)
+    }
+    
+    yearCandles = filteredYearCandles
+    
+    // Проверяем, сколько свечей должно быть за год
+    const hoursPerCandleForCalc = timeframe === '1h' ? 1 : timeframe === '4h' ? 4 : 24
+    const hoursInYear = (now - yearStart) / (1000 * 60 * 60)
+    const expectedCandles = Math.floor(hoursInYear / hoursPerCandleForCalc)
+    
+    console.log(`[${symbol}] Received candles:`, {
+      yearCandles: yearCandles?.length || 0,
+      expectedCandles: expectedCandles,
+      coverage: yearCandles?.length > 0 ? ((yearCandles.length / expectedCandles) * 100).toFixed(1) + '%' : '0%',
+      monthCandles: monthCandles?.length || 0,
+      timeframe,
+      yearStart: new Date(yearStart).toISOString(),
+      monthStart: new Date(monthStart).toISOString(),
+      now: new Date(now).toISOString(),
+      firstCandle: yearCandles?.[0] ? new Date(yearCandles[0].openTime).toISOString() : 'none',
+      lastCandle: yearCandles?.[yearCandles.length - 1] ? new Date(yearCandles[yearCandles.length - 1].openTime).toISOString() : 'none'
+    })
     
     if (!yearCandles || yearCandles.length === 0) {
+      console.warn(`[${symbol}] No year candles after filtering`)
       return { symbol, yearPnlPercent: 0, monthPnlPercent: 0, hasData: false }
     }
     
@@ -400,6 +449,19 @@ export default async function handler(req, res) {
 
   try {
     console.log('=== Updating aggregate stats in DB ===')
+    
+    // Логируем временные границы для отладки
+    const timeBoundaries = getTimeBoundaries()
+    console.log('Time boundaries:', {
+      yearStart: new Date(timeBoundaries.yearStart).toISOString(),
+      monthStart: new Date(timeBoundaries.monthStart).toISOString(),
+      now: new Date(timeBoundaries.now).toISOString(),
+      serverTime: new Date().toISOString(),
+      utcYear: new Date().getUTCFullYear(),
+      utcMonth: new Date().getUTCMonth() + 1, // +1 для читаемости (месяцы 0-11)
+      localYear: new Date().getFullYear(),
+      localMonth: new Date().getMonth() + 1
+    })
     
     // Проверяем, что БД настроена
     if (!process.env.DB_HOST) {

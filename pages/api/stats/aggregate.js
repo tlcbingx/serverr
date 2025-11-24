@@ -142,15 +142,17 @@ async function getFuturesCandles(symbol, interval, options = {}) {
 
 // Функция для получения временных границ
 function getTimeBoundaries() {
+  // Используем UTC для гарантии правильной даты независимо от часового пояса сервера
   const now = new Date()
-  const year = now.getFullYear()
+  const year = now.getUTCFullYear() // Используем UTC год вместо локального
+  const month = now.getUTCMonth() // Используем UTC месяц
   
   // Начало текущего года (1 января текущего года, 00:00:00 UTC)
   const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0))
   const yearStartTimestamp = yearStart.getTime()
   
   // Начало текущего месяца (1 число текущего месяца, 00:00:00 UTC)
-  const monthStart = new Date(Date.UTC(year, now.getUTCMonth(), 1, 0, 0, 0, 0))
+  const monthStart = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0))
   const monthStartTimestamp = monthStart.getTime()
   
   // Текущее время
@@ -597,6 +599,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Проверяем параметр force для принудительного обновления
+    const forceUpdate = req.query.force === 'true' || req.query.force === '1'
+    
     // Проверяем, что БД настроена
     if (!process.env.DB_HOST) {
       console.warn('⚠️ Database not configured, calculating stats on the fly')
@@ -614,12 +619,19 @@ export default async function handler(req, res) {
       })
     }
 
-    // Пытаемся получить статистику из БД
-    const { getLatestAggregateStats } = require('../../../lib/db')
-    const dbStats = await getLatestAggregateStats()
-    
-    // Проверяем параметр force для принудительного обновления
-    const forceUpdate = req.query.force === 'true' || req.query.force === '1'
+    // Если НЕ принудительное обновление, пытаемся получить из БД
+    let dbStats = null
+    if (!forceUpdate) {
+      try {
+        const { getLatestAggregateStats } = require('../../../lib/db')
+        dbStats = await getLatestAggregateStats()
+      } catch (dbError) {
+        console.warn('⚠️ Failed to get stats from DB, will recalculate:', dbError.message)
+        // Продолжаем расчет, если не удалось получить из БД
+      }
+    } else {
+      console.log('=== Force update requested, skipping DB read ===')
+    }
     
     if (dbStats && !forceUpdate) {
       // Проверяем, не устарела ли статистика (если старше 25 часов, пересчитываем)
@@ -644,7 +656,7 @@ export default async function handler(req, res) {
       } else {
         console.log('=== Stats in DB are too old, recalculating ===')
       }
-    } else {
+    } else if (!forceUpdate) {
       console.log('=== No stats in DB, calculating ===')
     }
     
@@ -657,17 +669,30 @@ export default async function handler(req, res) {
     const stats = await calculateAggregateStats()
     
     // Сохраняем в БД (асинхронно, не ждем) - всегда сохраняем при пересчете
+    // Запускаем сохранение в фоне, не блокируя ответ
     if (dbStats === null || forceUpdate) {
-      const { saveAggregateStats } = require('../../../lib/db')
-      saveAggregateStats({
-        yearPnlPercent: stats.totalYearPnl,
-        monthPnlPercent: stats.totalMonthPnl,
-        activeCoins: stats.activeCoins,
-        coinStats: stats.coinStats,
-        updatedAt: new Date()
-      }).catch(err => {
-        console.error('Failed to save stats to DB:', err)
-      })
+      // Используем setTimeout для гарантии, что ответ вернется до попытки сохранения
+      // В serverless окружениях это более надежно, чем process.nextTick
+      setTimeout(async () => {
+        try {
+          const { saveAggregateStats } = require('../../../lib/db')
+          await saveAggregateStats({
+            yearPnlPercent: stats.totalYearPnl,
+            monthPnlPercent: stats.totalMonthPnl,
+            activeCoins: stats.activeCoins,
+            coinStats: stats.coinStats,
+            updatedAt: new Date()
+          })
+          console.log('✅ Stats saved to DB successfully')
+        } catch (err) {
+          // Ошибка сохранения не критична - данные уже возвращены клиенту
+          // Логируем, но не прерываем выполнение
+          console.error('⚠️ Failed to save stats to DB (non-blocking):', err.message)
+          if (err.stack) {
+            console.error('Stack:', err.stack.split('\n').slice(0, 3).join('\n'))
+          }
+        }
+      }, 100) // Небольшая задержка, чтобы ответ успел отправиться
     }
     
     const response = {

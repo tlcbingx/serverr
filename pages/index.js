@@ -62,8 +62,16 @@ const Home = (props) => {
   const fetchStats = async (force = false) => {
     try {
       setLoading(true)
-      const url = force ? '/api/stats/aggregate?force=true' : '/api/stats/aggregate'
-      const response = await fetch(url)
+      const url = force ? `/api/stats/aggregate?force=true&t=${Date.now()}` : '/api/stats/aggregate'
+      const response = await fetch(url, {
+        cache: force ? 'no-store' : 'default',
+        ...(force && { 
+          headers: { 
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          } 
+        })
+      })
       const data = await response.json()
       
       if (data.success && data.data) {
@@ -126,10 +134,6 @@ const Home = (props) => {
             dangerouslySetInnerHTML={{
               __html: JSON.stringify({
                 "@context": "https://schema.org",
-                "@type": "SoftwareApplication",
-                "name": "VEXTR - Торговый бот для алго трейдинга",
-                "applicationCategory": "FinanceApplication",
-                "applicationSubCategory": "Trading Bot",
                 "description": "Торговый бот для алгоритмического трейдинга криптовалютами. Автоматическая торговля 24/7 с управлением ордерами и рисками. Алго трейдинг для бирж OKX, Bybit, BingX.",
                 "url": "https://vextr.ru",
                 "operatingSystem": "Telegram",

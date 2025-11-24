@@ -96,33 +96,82 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     const endTime = options.endTime ? parseInt(options.endTime) : Date.now()
     
     // Проверяем БД перед запросом к API
-    // Если данные обновлены менее 3 дней назад, используем кэш
+    // Всегда используем кэш как базу, затем дополняем недостающие данные из API
+    let cachedCandles = []
     if (process.env.DB_HOST) {
       try {
-        const lastUpdate = await getCandlesLastUpdate(symbol, interval)
-        const threeDaysAgo = Date.now() - (3 * 24 * 60 * 60 * 1000)
+        // Получаем все свечи из кеша для диапазона (или без ограничений если диапазон не указан)
+        const cacheStartTime = startTime || 0
+        const cacheEndTime = endTime || Date.now()
+        cachedCandles = await getCandlesFromDB(symbol, interval, cacheStartTime, cacheEndTime)
         
-        if (lastUpdate && new Date(lastUpdate).getTime() > threeDaysAgo) {
-          console.log(`[KuCoin] Using cached data for ${symbol} ${interval} (last update: ${new Date(lastUpdate).toISOString()})`)
-          const cachedCandles = await getCandlesFromDB(symbol, interval, startTime, endTime)
+        if (cachedCandles && cachedCandles.length > 0) {
+          console.log(`[KuCoin] Found ${cachedCandles.length} candles in cache for ${symbol} ${interval}`)
           
-          if (cachedCandles && cachedCandles.length > 0) {
-            // Фильтруем по временному диапазону если указан
-            let filtered = cachedCandles
+          // Проверяем разрывы в кеше
+          const intervalMs = interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000
+          const sortedCache = cachedCandles.sort((a, b) => a.openTime - b.openTime)
+          let hasGaps = false
+          let missingRanges = []
+          
+          // Проверяем начало диапазона
+          if (startTime && sortedCache.length > 0) {
+            const firstCandleTime = sortedCache[0].openTime
+            if (firstCandleTime > startTime + intervalMs) {
+              hasGaps = true
+              missingRanges.push({ start: startTime, end: firstCandleTime - 1 })
+            }
+          }
+          
+          // Проверяем разрывы между свечами
+          for (let i = 1; i < sortedCache.length; i++) {
+            const gap = sortedCache[i].openTime - sortedCache[i-1].openTime
+            if (gap > intervalMs * 2) {
+              hasGaps = true
+              missingRanges.push({
+                start: sortedCache[i-1].openTime + intervalMs,
+                end: sortedCache[i].openTime - intervalMs
+              })
+            }
+          }
+          
+          // Проверяем конец диапазона
+          if (endTime && sortedCache.length > 0) {
+            const lastCandleTime = sortedCache[sortedCache.length - 1].openTime
+            const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000)
+            // Если запрашиваем свежие данные и последняя свеча старше 1 дня, нужно обновить
+            if (endTime > oneDayAgo && lastCandleTime < endTime - intervalMs) {
+              hasGaps = true
+              missingRanges.push({ start: lastCandleTime + intervalMs, end: endTime })
+            }
+          }
+          
+          // Если нет разрывов и кеш свежий, используем только кеш
+          const lastUpdate = await getCandlesLastUpdate(symbol, interval)
+          const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000)
+          const isCacheFresh = lastUpdate && new Date(lastUpdate).getTime() > oneDayAgo
+          
+          if (!hasGaps && isCacheFresh) {
+            let filtered = sortedCache
             if (startTime || endTime) {
               const start = startTime || 0
               const end = endTime || Date.now()
-              filtered = cachedCandles.filter(c => c.openTime >= start && c.openTime <= end)
+              filtered = sortedCache.filter(c => c.openTime >= start && c.openTime <= end)
             }
             
-            // Сортируем и ограничиваем лимитом
-            filtered.sort((a, b) => a.openTime - b.openTime)
             if (options.limit && filtered.length > options.limit) {
               filtered = filtered.slice(-options.limit)
             }
             
-            console.log(`[KuCoin] Returned ${filtered.length} candles from cache for ${symbol}`)
+            console.log(`[KuCoin] Returned ${filtered.length} candles from cache (complete, no gaps) for ${symbol}`)
             return filtered
+          }
+          
+          // Если есть разрывы или кеш устарел, будем дополнять из API
+          if (hasGaps) {
+            console.log(`[KuCoin] Cache has ${missingRanges.length} gaps, will fill from API`)
+          } else {
+            console.log(`[KuCoin] Cache outdated, will update with new candles`)
           }
         }
       } catch (dbError) {
@@ -199,8 +248,31 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       const result = await response.json()
       
       // KuCoin возвращает { code: "200000", data: [...] }
-      if (result.code !== '200000' || !Array.isArray(result.data) || result.data.length === 0) {
+      if (result.code !== '200000') {
+        // Если код ошибки, логируем и останавливаемся
+        if (result.code !== '200000') {
+          console.warn(`[KuCoin] API returned code ${result.code} for ${symbol}, message: ${result.msg || 'unknown'}`)
+        }
         break
+      }
+      
+      if (!Array.isArray(result.data)) {
+        console.warn(`[KuCoin] API returned non-array data for ${symbol}`)
+        break
+      }
+      
+      // Если данных нет, но мы еще не достигли targetStartTime, продолжаем
+      if (result.data.length === 0) {
+        // Проверяем, достигли ли мы targetStartTime
+        if (endAt <= targetStartTime) {
+          console.log(`[KuCoin] No more data available, reached target start time`)
+          break
+        }
+        // Если еще не достигли, продолжаем с более ранним endAt
+        const intervalSeconds = interval === '1h' ? 3600 : interval === '4h' ? 14400 : 86400
+        endAt = endAt - (maxLimit * intervalSeconds)
+        attempts++
+        continue
       }
       
       // Конвертируем формат KuCoin в формат библиотеки
@@ -223,6 +295,12 @@ async function getFuturesCandles(symbol, interval, options = {}) {
           takerBuyQuoteVolume: 0
         }
       })
+      
+      // KuCoin может вернуть больше свечей, чем запрошено (особенно при указании startAt/endAt)
+      // Ограничиваем до ожидаемого количества, но обрабатываем все
+      if (batch.length > maxLimit) {
+        console.log(`[KuCoin] Batch ${attempts + 1}: received ${batch.length} candles (more than requested ${maxLimit}), processing all`)
+      }
       
       // Удаляем дубликаты перед добавлением (по timestamp)
       const existingTimestamps = new Set(allCandles.map(c => c.openTime))
@@ -250,12 +328,14 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       // Если получили maxLimit свечей, обязательно продолжаем
       if (batch.length > 0 && oldestTimestamp > targetStartTime * 1000) {
         // ВАЖНО: Обновляем endAt для следующего запроса правильно
-        // Берем время самой старой свечи минус 1 интервал, чтобы не пропустить свечи
-        const intervalSeconds = interval === '1h' ? 3600 : interval === '4h' ? 14400 : 86400
-        endAt = Math.floor(oldestTimestamp / 1000) - intervalSeconds
+        // Берем время самой старой свечи минус 1 миллисекунду, чтобы не пропустить свечи
+        // KuCoin API использует секунды, поэтому конвертируем обратно
+        endAt = Math.floor(oldestTimestamp / 1000) - 1
         attempts++
         
-        // Минимальная задержка только для избежания rate limits
+        // Небольшая задержка для избежания rate limits (особенно для часовых графиков)
+        const delay = interval === '1h' ? 200 : 100
+        await new Promise(resolve => setTimeout(resolve, delay))
         continue
       }
       
@@ -275,10 +355,24 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       })
     }
     
+    // Объединяем кеш и API данные
+    if (cachedCandles.length > 0) {
+      // Создаем Map для быстрого поиска свечей из кеша
+      const cacheMap = new Map()
+      cachedCandles.forEach(c => cacheMap.set(c.openTime, c))
+      
+      // Добавляем свечи из API, перезаписывая кеш если есть дубликаты
+      allCandles.forEach(c => cacheMap.set(c.openTime, c))
+      
+      // Объединяем все свечи
+      allCandles = Array.from(cacheMap.values())
+      console.log(`[KuCoin] Merged cache (${cachedCandles.length}) + API (${allCandles.length - cachedCandles.length}) = ${allCandles.length} total candles`)
+    }
+    
     // Сортируем по времени (старые первыми) и удаляем дубликаты
     allCandles.sort((a, b) => a.openTime - b.openTime)
     
-    // Удаляем дубликаты по timestamp
+    // Удаляем дубликаты по timestamp (на всякий случай)
     const uniqueCandles = []
     const seenTimestamps = new Set()
     for (const candle of allCandles) {

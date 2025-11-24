@@ -73,16 +73,33 @@ exports.handler = async (event, context) => {
 
 После настройки cron job, проверьте:
 
-1. **Ручной запуск обновления**:
+1. **Ручной запуск обновления (с секретным ключом)**:
    ```bash
    curl "https://your-domain.com/api/stats/update?secret=YOUR_SECRET_KEY"
    ```
+   
+   Или через браузер:
+   ```
+   https://your-domain.com/api/stats/update?secret=YOUR_SECRET_KEY
+   ```
 
-2. **Проверка данных в БД**:
+2. **Принудительное обновление через aggregate API (без секретного ключа)**:
+   ```bash
+   curl "https://your-domain.com/api/stats/aggregate?force=true"
+   ```
+   
+   Или через браузер:
+   ```
+   https://your-domain.com/api/stats/aggregate?force=true
+   ```
+   
+   Этот метод пересчитывает статистику и сохраняет её в БД. Полезно для ручного обновления при необходимости.
+
+3. **Проверка данных в БД**:
    - Статистика должна появиться в таблице `aggregate_stats`
    - API `/api/stats/aggregate` должен возвращать данные из БД (быстро, без расчета)
 
-3. **Логи**:
+4. **Логи**:
    - Проверьте логи вашего хостинга на наличие ошибок
    - Убедитесь, что cron job выполняется успешно
 

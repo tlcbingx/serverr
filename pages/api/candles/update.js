@@ -119,7 +119,15 @@ async function getFuturesCandles(symbol, interval, options = {}) {
         }
       })
       
-      allCandles = [...allCandles, ...batch]
+      // Удаляем дубликаты перед добавлением (по timestamp)
+      const existingTimestamps = new Set(allCandles.map(c => c.openTime))
+      const newCandles = batch.filter(c => !existingTimestamps.has(c.openTime))
+      
+      if (newCandles.length < batch.length) {
+        console.log(`[KuCoin] Batch ${attempts + 1}: removed ${batch.length - newCandles.length} duplicate candles`)
+      }
+      
+      allCandles = [...allCandles, ...newCandles]
       
       const oldestTimestamp = Math.min(...batch.map(c => c.openTime))
       
@@ -128,8 +136,14 @@ async function getFuturesCandles(symbol, interval, options = {}) {
       }
       
       if (batch.length > 0 && oldestTimestamp > targetStartTime * 1000) {
+        // ВАЖНО: Обновляем endAt правильно - минус 1 секунда от самой старой свечи
+        // Это гарантирует, что мы не пропустим свечи
         endAt = Math.floor(oldestTimestamp / 1000) - 1
         attempts++
+        
+        // Небольшая задержка для избежания rate limits (особенно для часовых графиков)
+        const delay = interval === '1h' ? 200 : 100
+        await new Promise(resolve => setTimeout(resolve, delay))
         continue
       }
       
@@ -138,10 +152,43 @@ async function getFuturesCandles(symbol, interval, options = {}) {
     
     console.log(`[KuCoin] Total fetched: ${allCandles.length} candles for ${symbol}`)
     
-    // Сортируем по времени
+    // Сортируем по времени и удаляем дубликаты
     allCandles.sort((a, b) => a.openTime - b.openTime)
     
-    return allCandles
+    // Удаляем дубликаты по timestamp
+    const uniqueCandles = []
+    const seenTimestamps = new Set()
+    for (const candle of allCandles) {
+      if (!seenTimestamps.has(candle.openTime)) {
+        seenTimestamps.add(candle.openTime)
+        uniqueCandles.push(candle)
+      }
+    }
+    
+    if (uniqueCandles.length < allCandles.length) {
+      console.log(`[KuCoin] Removed ${allCandles.length - uniqueCandles.length} duplicate candles after sorting`)
+    }
+    
+    // Проверяем на разрывы в данных
+    if (uniqueCandles.length > 1) {
+      const intervalMs = interval === '1h' ? 3600000 : interval === '4h' ? 14400000 : 86400000
+      let gaps = []
+      for (let i = 1; i < uniqueCandles.length; i++) {
+        const gap = uniqueCandles[i].openTime - uniqueCandles[i-1].openTime
+        if (gap > intervalMs * 2) { // Разрыв больше чем 2 интервала
+          gaps.push({
+            from: new Date(uniqueCandles[i-1].openTime).toISOString(),
+            to: new Date(uniqueCandles[i].openTime).toISOString(),
+            gapHours: Math.round(gap / (1000 * 60 * 60))
+          })
+        }
+      }
+      if (gaps.length > 0) {
+        console.warn(`[KuCoin] Found ${gaps.length} gaps in candles for ${symbol}:`, gaps.slice(0, 5))
+      }
+    }
+    
+    return uniqueCandles
   } catch (error) {
     console.error(`[KuCoin] Error for ${symbol}:`, error.message)
     return []
