@@ -460,66 +460,63 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  try {
-    console.log('=== Updating aggregate stats in DB ===')
-    
-    // Логируем временные границы для отладки
-    const timeBoundaries = getTimeBoundaries()
-    console.log('Time boundaries:', {
-      yearStart: new Date(timeBoundaries.yearStart).toISOString(),
-      monthStart: new Date(timeBoundaries.monthStart).toISOString(),
-      now: new Date(timeBoundaries.now).toISOString(),
-      serverTime: new Date().toISOString(),
-      utcYear: new Date().getUTCFullYear(),
-      utcMonth: new Date().getUTCMonth() + 1, // +1 для читаемости (месяцы 0-11)
-      localYear: new Date().getFullYear(),
-      localMonth: new Date().getMonth() + 1
+  // Проверяем, что БД настроена
+  if (!process.env.DB_HOST) {
+    console.error('❌ Database not configured')
+    return res.status(500).json({ 
+      error: 'Database not configured',
+      message: 'Please configure database connection in .env.local'
     })
-    
-    // Проверяем, что БД настроена
-    if (!process.env.DB_HOST) {
-      console.error('❌ Database not configured')
-      return res.status(500).json({ 
-        error: 'Database not configured',
-        message: 'Please configure database connection in .env.local'
-      })
-    }
+  }
 
-    // Рассчитываем статистику
-    const stats = await calculateAggregateStats()
-    
-    // Сохраняем в БД
-    const savedStats = await saveAggregateStats({
-      yearPnlPercent: stats.totalYearPnl,
-      monthPnlPercent: stats.totalMonthPnl,
-      activeCoins: stats.activeCoins,
-      coinStats: stats.coinStats,
-      updatedAt: new Date()
-    })
-    
-    console.log('✅ Aggregate stats saved to DB:', {
-      yearPnlPercent: savedStats.year_pnl_percent,
-      monthPnlPercent: savedStats.month_pnl_percent,
-      activeCoins: savedStats.active_coins,
-      updatedAt: savedStats.updated_at
-    })
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Stats updated successfully',
-      data: {
+  // Сразу возвращаем ответ, чтобы избежать таймаута cron job
+  // Обновление будет выполняться в фоне
+  res.status(202).json({
+    success: true,
+    message: 'Stats update started in background',
+    coins: ALL_COINS.length,
+    note: 'Update is running asynchronously, check logs for progress'
+  })
+
+  // Продолжаем обновление в фоне (не ждем завершения)
+  ;(async () => {
+    try {
+      console.log('=== Updating aggregate stats in DB (background) ===')
+      
+      // Логируем временные границы для отладки
+      const timeBoundaries = getTimeBoundaries()
+      console.log('Time boundaries:', {
+        yearStart: new Date(timeBoundaries.yearStart).toISOString(),
+        monthStart: new Date(timeBoundaries.monthStart).toISOString(),
+        now: new Date(timeBoundaries.now).toISOString(),
+        serverTime: new Date().toISOString(),
+        utcYear: new Date().getUTCFullYear(),
+        utcMonth: new Date().getUTCMonth() + 1, // +1 для читаемости (месяцы 0-11)
+        localYear: new Date().getFullYear(),
+        localMonth: new Date().getMonth() + 1
+      })
+
+      // Рассчитываем статистику
+      const stats = await calculateAggregateStats()
+      
+      // Сохраняем в БД
+      const savedStats = await saveAggregateStats({
+        yearPnlPercent: stats.totalYearPnl,
+        monthPnlPercent: stats.totalMonthPnl,
+        activeCoins: stats.activeCoins,
+        coinStats: stats.coinStats,
+        updatedAt: new Date()
+      })
+      
+      console.log('✅ Aggregate stats saved to DB:', {
         yearPnlPercent: savedStats.year_pnl_percent,
         monthPnlPercent: savedStats.month_pnl_percent,
         activeCoins: savedStats.active_coins,
         updatedAt: savedStats.updated_at
-      }
-    })
-  } catch (error) {
-    console.error('❌ Error updating aggregate stats:', error.message, error.stack)
-    return res.status(500).json({
-      success: false,
-      error: error.message
-    })
-  }
+      })
+    } catch (error) {
+      console.error('❌ Error updating aggregate stats (background):', error.message, error.stack)
+    }
+  })()
 }
 
